@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useCallback } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { QuestionPaper, StudentSubmission } from '../../types';
@@ -6,7 +7,11 @@ import { FileUpload } from '../../components/FileUpload';
 // In a real app, this would come from authentication
 const MOCK_STUDENT_NAME = "Jane Doe"; 
 
-export const SubmitPaper: React.FC = () => {
+interface SubmitPaperProps {
+    onSubmissionComplete?: () => void;
+}
+
+export const SubmitPaper: React.FC<SubmitPaperProps> = ({ onSubmissionComplete }) => {
     const { questionPapers, studentSubmissions, addStudentSubmission } = useAppContext();
     const [selectedPaper, setSelectedPaper] = useState<QuestionPaper | null>(null);
 
@@ -35,15 +40,22 @@ export const SubmitPaper: React.FC = () => {
         };
         addStudentSubmission(newSubmission);
         setSelectedPaper(null); // Reset after submission
-    }, [selectedPaper, addStudentSubmission]);
+        if (onSubmissionComplete) {
+            onSubmissionComplete();
+        }
+    }, [selectedPaper, addStudentSubmission, onSubmissionComplete]);
 
     if (selectedPaper) {
         return (
              <div className="bg-white p-6 rounded-lg shadow-md max-w-2xl mx-auto">
                 <button onClick={() => setSelectedPaper(null)} className="text-sm text-blue-600 hover:underline mb-4">&larr; Back to all papers</button>
                 <h3 className="text-xl font-semibold mb-2 text-gray-700">Submit for: {selectedPaper.title}</h3>
-                <p className="text-gray-600 mb-6">Please upload a clear image of your completed answer sheet to receive your grade and feedback.</p>
-                <FileUpload onFileUpload={handleFileUpload} label="Upload your answer sheet" />
+                <p className="text-gray-600 mb-6">Please upload a clear image or PDF of your completed answer sheet to receive your grade and feedback.</p>
+                <FileUpload 
+                    onFileUpload={handleFileUpload} 
+                    label="Upload your answer sheet (Image or PDF)" 
+                    acceptedTypes="image/*,application/pdf"
+                />
             </div>
         )
     }

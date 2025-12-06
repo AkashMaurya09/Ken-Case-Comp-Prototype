@@ -1,14 +1,10 @@
 
-import { db } from './firebase';
-import { doc, writeBatch } from 'firebase/firestore';
-import { RubricItem } from '../types';
+import { LocalDB } from './indexedDBService';
+import { RubricItem, QuestionPaper, StudentSubmission } from '../types';
 
 export const seedDatabase = async () => {
-    const batch = writeBatch(db);
-
     // 1. Create a Sample Question Paper
     const paperId = 'demo-paper-physics-101';
-    const paperRef = doc(db, 'questionPapers', paperId);
     
     const demoRubric: RubricItem[] = [
         {
@@ -27,29 +23,27 @@ export const seedDatabase = async () => {
         }
     ];
 
-    // Using a placeholder image for the demo model answer
-    const demoPaper = {
+    // For demo data, we don't have a blob, so LocalDB will use a placeholder URL automatically if blob is missing.
+    const demoPaper: QuestionPaper = {
         id: paperId,
         title: 'Demo: Physics Mid-Term',
-        modelAnswerPreviewUrl: 'https://placehold.co/600x800/e2e8f0/1e293b?text=Model+Answer+Sheet',
+        modelAnswerPreviewUrl: '', // Will be handled by service
         rubric: demoRubric,
         createdAt: new Date()
     };
 
-    batch.set(paperRef, demoPaper);
+    await LocalDB.saveQuestionPaper(demoPaper);
 
     // 2. Create a Sample Student Submission
     const subId = 'demo-sub-student-1';
-    const subRef = doc(db, 'submissions', subId);
     
-    const demoSubmission = {
+    const demoSubmission: StudentSubmission = {
         id: subId,
         paperId: paperId,
         studentName: 'Demo Student',
-        previewUrl: 'https://placehold.co/600x800/white/black?text=Student+Answer+Sheet',
+        previewUrl: '', // Will be handled by service
         submissionDate: new Date(),
         isGrading: false,
-        // Pre-graded for visual effect
         gradedResults: [
             {
                 questionId: 'q1',
@@ -68,7 +62,5 @@ export const seedDatabase = async () => {
         ]
     };
 
-    batch.set(subRef, demoSubmission);
-
-    await batch.commit();
+    await LocalDB.saveSubmission(demoSubmission);
 };

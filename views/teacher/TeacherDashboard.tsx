@@ -11,6 +11,15 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigate }
     const { questionPapers, studentSubmissions } = useAppContext();
     const { userProfile } = useAuth();
 
+    // --- Time-based Greeting ---
+    const greeting = useMemo(() => {
+        const hour = new Date().getHours();
+        if (hour < 5) return "Burning the midnight oil";
+        if (hour < 12) return "Good morning";
+        if (hour < 18) return "Good afternoon";
+        return "Good evening";
+    }, []);
+
     // --- Statistics Calculations ---
     const stats = useMemo(() => {
         const totalPapers = questionPapers.length;
@@ -79,9 +88,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigate }
             <div className="flex justify-between items-end">
                 <div>
                     <h2 className="text-3xl font-bold text-gray-800">
-                        Welcome back, {userProfile?.displayName ? userProfile.displayName.split(' ')[0] : 'Teacher'}!
+                        {greeting}, {userProfile?.displayName ? userProfile.displayName.split(' ')[0] : 'Educator'}
                     </h2>
-                    <p className="mt-2 text-gray-600">Here's what's happening in your classes today.</p>
+                    <p className="mt-2 text-gray-600">Your grading command center is ready. Here is the latest overview.</p>
                 </div>
                 <div className="text-sm text-gray-500 font-medium bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200">
                     {new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}

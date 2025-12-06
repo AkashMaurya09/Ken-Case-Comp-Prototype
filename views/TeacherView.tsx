@@ -5,6 +5,7 @@ import { ViewQuestionPapers } from './teacher/ViewQuestionPapers';
 import { Analytics } from './teacher/Analytics';
 import { ResolveDisputes } from './teacher/ResolveDisputes';
 import { TeacherDashboard } from './teacher/TeacherDashboard';
+import { QuestionPaper } from '../types';
 
 type TeacherTab = 'dashboard' | 'create' | 'view' | 'analytics' | 'disputes';
 
@@ -35,12 +36,20 @@ export const TeacherView: React.FC = () => {
     
     // State to handle navigation from Disputes to Grading Dashboard
     const [navigationState, setNavigationState] = useState<{ paperId: string; submissionId: string } | null>(null);
+    const [editingPaper, setEditingPaper] = useState<QuestionPaper | null>(null);
 
     const handlePaperCreated = () => {
+        setEditingPaper(null);
         setActiveTab('view');
+    };
+    
+    const handleEditPaper = (paper: QuestionPaper) => {
+        setEditingPaper(paper);
+        setActiveTab('create');
     };
 
     const handleReviewDispute = (paperId: string, submissionId: string) => {
+        console.log(`[TeacherView] Navigating to dispute: Paper ${paperId}, Submission ${submissionId}`);
         setNavigationState({ paperId, submissionId });
         setActiveTab('view');
     };
@@ -50,12 +59,18 @@ export const TeacherView: React.FC = () => {
             case 'dashboard':
                 return <TeacherDashboard onNavigate={(tab) => setActiveTab(tab)} />;
             case 'create':
-                return <CreateQuestionPaper onPaperCreated={handlePaperCreated} />;
+                return (
+                    <CreateQuestionPaper 
+                        initialPaper={editingPaper || undefined}
+                        onPaperCreated={handlePaperCreated} 
+                    />
+                );
             case 'view':
                 return (
                     <ViewQuestionPapers 
                         initialPaperId={navigationState?.paperId}
                         initialSubmissionId={navigationState?.submissionId}
+                        onEdit={handleEditPaper}
                         // Reset nav state after it's consumed
                         onNavigationComplete={() => setNavigationState(null)}
                     />
@@ -113,14 +128,12 @@ export const TeacherView: React.FC = () => {
                             isActive={activeTab === item.id}
                             onClick={() => {
                                 setNavigationState(null); // Clear nav state if clicking manually
+                                setEditingPaper(null); // Clear edit state
                                 setActiveTab(item.id);
                             }}
                         />
                     ))}
                 </nav>
-                <div className="p-4 border-t border-gray-200">
-                    {/* Placeholder for future items like settings or profile */}
-                </div>
             </aside>
 
             {/* Main Content */}

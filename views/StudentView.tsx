@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { AllSubmissions } from './student/AllSubmissions';
 import { MyAnalytics } from './student/MyAnalytics';
@@ -33,19 +34,27 @@ const NavItem: React.FC<NavItemProps> = ({ label, icon, isActive, onClick }) => 
 
 
 export const StudentView: React.FC = () => {
-    const { questionPapers } = useAppContext();
+    const { questionPapers, studentSubmissions } = useAppContext();
     const [activeTab, setActiveTab] = useState<StudentTab>('submissions');
-    const [viewingSubmission, setViewingSubmission] = useState<StudentSubmission | null>(null);
+    // We store the ID instead of the object to ensure we always have the latest data from context
+    const [viewingSubmissionId, setViewingSubmissionId] = useState<string | null>(null);
 
     const handleViewResults = (submission: StudentSubmission) => {
-        setViewingSubmission(submission);
+        setViewingSubmissionId(submission.id);
     };
     
     const handleBackToSubmissions = () => {
-        setViewingSubmission(null);
+        setViewingSubmissionId(null);
     }
     
-    const paperForSubmission = viewingSubmission ? questionPapers.find(p => p.id === viewingSubmission.paperId) : null;
+    // Derived state: Get the fresh submission object from context based on ID
+    const viewingSubmission = viewingSubmissionId 
+        ? studentSubmissions.find(s => s.id === viewingSubmissionId) 
+        : null;
+
+    const paperForSubmission = viewingSubmission 
+        ? questionPapers.find(p => p.id === viewingSubmission.paperId) 
+        : null;
 
     // This is the detailed results view, which takes over the screen
     if (viewingSubmission && paperForSubmission) {
@@ -64,7 +73,7 @@ export const StudentView: React.FC = () => {
     const renderContent = () => {
         switch (activeTab) {
             case 'submit':
-                return <SubmitPaper />;
+                return <SubmitPaper onSubmissionComplete={() => setActiveTab('submissions')} />;
             case 'submissions':
                 return <AllSubmissions onViewResults={handleViewResults} />;
             case 'disputes':
@@ -113,7 +122,10 @@ export const StudentView: React.FC = () => {
                             label={item.label}
                             icon={item.icon}
                             isActive={activeTab === item.id}
-                            onClick={() => setActiveTab(item.id)}
+                            onClick={() => {
+                                setViewingSubmissionId(null);
+                                setActiveTab(item.id);
+                            }}
                         />
                     ))}
                 </nav>

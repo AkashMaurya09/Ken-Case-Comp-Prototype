@@ -1,5 +1,5 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
-import { createWorker } from 'tesseract.js';
 import { RubricItem } from '../types';
 
 if (!process.env.API_KEY) {
@@ -9,15 +9,43 @@ if (!process.env.API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
 
-// Helper to convert File to base64
-const fileToGenerativePart = async (file: File) => {
-  const base64EncodedDataPromise = new Promise<string>((resolve) => {
+// Helper to convert File/Blob to base64 with robust MIME type detection
+const fileToGenerativePart = async (file: Blob | File) => {
+  const base64EncodedDataPromise = new Promise<{data: string, mimeType: string}>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+    reader.onloadend = () => {
+        const result = reader.result as string;
+        // Parse mime type from data url "data:image/jpeg;base64,/9j/4AAQ..."
+        const match = result.match(/^data:(.*);base64,(.*)$/);
+        if (match) {
+            resolve({ mimeType: match[1], data: match[2] });
+        } else {
+            // Fallback
+             resolve({ mimeType: file.type, data: result.split(',')[1] });
+        }
+    };
+    reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+
+  let { data, mimeType } = await base64EncodedDataPromise;
+  
+  // Gemini requires a valid mime type. If empty, try to infer or fallback.
+  if (!mimeType || mimeType.trim() === '') {
+      console.warn("[GeminiService] MIME type missing from Blob. Attempting inference.");
+      if ('name' in file) {
+          const name = (file as File).name.toLowerCase();
+          if (name.endsWith('.pdf')) mimeType = 'application/pdf';
+          else if (name.endsWith('.png')) mimeType = 'image/png';
+          else if (name.endsWith('.webp')) mimeType = 'image/webp';
+          else mimeType = 'image/jpeg'; // Assume JPEG for unknown images
+      } else {
+          mimeType = 'image/jpeg'; // Ultimate fallback
+      }
+  }
+
   return {
-    inlineData: { data: await base64EncodedDataPromise, mimeType: file.type },
+    inlineData: { data: data, mimeType: mimeType },
   };
 };
 
@@ -25,7 +53,7 @@ const urlToGenerativePart = async (url: string) => {
     try {
         const response = await fetch(url);
         const blob = await response.blob();
-        return await fileToGenerativePart(new File([blob], "image.png", { type: blob.type }));
+        return await fileToGenerativePart(blob);
     } catch (e) {
         console.error("Error fetching image from URL", e);
         throw new Error("Could not access the answer sheet image.");
@@ -54,26 +82,31 @@ export const gradeAnswerSheet = async (
   studentAnswerSheet: File | string,
   rubricItem: RubricItem,
 ) => {
+  console.log(`[GeminiService] gradeAnswerSheet: Starting grading for question ID: ${rubricItem.id}`);
   try {
     let imagePart;
     if (studentAnswerSheet instanceof File) {
         imagePart = await fileToGenerativePart(studentAnswerSheet);
-    } else {
+    } else if (typeof studentAnswerSheet === 'string') {
         imagePart = await urlToGenerativePart(studentAnswerSheet);
+    } else {
+        // Handle Blob case if passed directly (from IndexedDB)
+        imagePart = await fileToGenerativePart(studentAnswerSheet as Blob);
     }
     
-    const prompt = `You are an expert AI exam grader. Your task is to grade a student's answer for a single, specific question based on the provided answer sheet image and a detailed rubric.
+    const prompt = `You are an expert AI exam grader. Your task is to grade a student's answer for a single, specific question based on the provided answer sheet and a detailed rubric.
 
     **Grading Rubric for the Question:**
     ${rubricItemToText(rubricItem)}
 
-    **Student's Answer Sheet Image is attached.** Please analyze the image to find and evaluate the student's answer corresponding to the question: "${rubricItem.question}".
+    **Student's Answer Sheet is attached.** Please analyze the document to find and evaluate the student's answer corresponding to the question: "${rubricItem.question}".
 
     **Your Task:**
-    1.  Carefully evaluate the student's answer against the provided rubric.
-    2.  Sum up the marks awarded based on the rubric rules. The final marks should not exceed the total marks for the question.
-    3.  Provide brief, constructive feedback explaining the grade. Mention what was done correctly and what was missed.
-    4.  Based on their answer, suggest 1-2 specific topics or concepts for the student to review for improvement.
+    1.  **Evaluate Steps:** Check if the student followed the steps defined in the rubric. Assign marks for each step present. Report both awarded marks and maximum possible marks for each step.
+    2.  **Check Keywords:** Check if the student used the required keywords. Assign marks for keywords present. Report awarded marks and max marks for each keyword.
+    3.  **Sum Marks:** Sum up the marks awarded. The final marks should not exceed the total marks for the question.
+    4.  **Feedback (CRITICAL):** Provide a detailed explanation. Explicitly state **WHERE marks were given** (e.g., "Awarded 2/2 marks for formula") and **WHERE marks were cut** (e.g., "Deducted 1 mark for calculation error in step 2").
+    5.  **Suggestions:** Based on their answer, suggest 1-2 specific topics or concepts for the student to review for improvement.
 
     Provide your response in the specified JSON format.
     `;
@@ -87,7 +120,7 @@ export const gradeAnswerSheet = async (
             },
             feedback: {
                 type: Type.STRING,
-                description: 'Constructive feedback for the student.'
+                description: 'Detailed feedback explaining where marks were given and where they were cut.'
             },
             improvementSuggestions: {
                 type: Type.ARRAY,
@@ -96,12 +129,40 @@ export const gradeAnswerSheet = async (
                 },
                 description: 'A list of topics or concepts for improvement.'
             },
+            // Detailed breakdown
+            stepAnalysis: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        stepDescription: { type: Type.STRING },
+                        marksAwarded: { type: Type.NUMBER },
+                        maxMarks: { type: Type.NUMBER },
+                        status: { type: Type.STRING, description: "One of: Correct, Partial, Missing" }
+                    }
+                },
+                description: "Breakdown of marks for each step in the rubric."
+            },
+            keywordAnalysis: {
+                 type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        keyword: { type: Type.STRING },
+                        present: { type: Type.BOOLEAN },
+                        marksAwarded: { type: Type.NUMBER },
+                        maxMarks: { type: Type.NUMBER }
+                    }
+                },
+                description: "Analysis of keywords found in the answer."
+            }
         },
         required: ['marksAwarded', 'feedback', 'improvementSuggestions']
     };
 
+    console.log(`[GeminiService] gradeAnswerSheet: Sending request to Gemini...`);
     const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-2.5-flash',
         contents: { parts: [imagePart, {text: prompt}] },
         config: {
             responseMimeType: "application/json",
@@ -109,7 +170,14 @@ export const gradeAnswerSheet = async (
         }
     });
 
-    const jsonText = response.text.trim();
+    let jsonText = response.text ? response.text.trim() : "";
+    
+    // Clean up markdown formatting if present (Gemini sometimes wraps JSON in ```json ... ```)
+    if (jsonText.startsWith('```')) {
+        jsonText = jsonText.replace(/^```(json)?\s*/, '').replace(/\s*```$/, '');
+    }
+
+    console.log(`[GeminiService] gradeAnswerSheet: Response received.`);
     const result = JSON.parse(jsonText);
     
     // Validate the result shape
@@ -123,41 +191,49 @@ export const gradeAnswerSheet = async (
         feedback: result.feedback,
         improvementSuggestions: result.improvementSuggestions,
         disputed: false,
+        // Append extra details to the object (handled dynamically in UI)
+        stepAnalysis: result.stepAnalysis || [],
+        keywordAnalysis: result.keywordAnalysis || []
     };
 
   } catch (error) {
-    console.error("Error grading with Gemini API:", error);
+    console.error("[GeminiService] Error grading with Gemini API:", error);
     throw new Error("Failed to get a valid response from the AI grader. Please try again.");
   }
 };
 
 export const extractQuestionsFromPaper = async (
   questionPaperFile: File,
-): Promise<{ question: string; totalMarks: number }[]> => {
+): Promise<{ 
+    question: string; 
+    totalMarks: number; 
+    finalAnswer?: string;
+    steps?: { description: string; marks: number }[];
+    keywords?: { keyword: string; marks: number }[];
+}[]> => {
+  console.log(`[GeminiService] extractQuestionsFromPaper: Processing file ${questionPaperFile.name}`);
   try {
-    // 1. Perform OCR using Tesseract.js to improve text accuracy
-    const worker = await createWorker('eng');
-    const ret = await worker.recognize(questionPaperFile);
-    const ocrText = ret.data.text;
-    await worker.terminate();
-
-    // 2. Use Gemini with the image and the OCR text
     const imagePart = await fileToGenerativePart(questionPaperFile);
 
-    const prompt = `You are an intelligent AI assistant specialized in analyzing educational documents. Your task is to extract all questions and their corresponding total marks from the provided image of an exam question paper.
-
-    I have also performed OCR on the document. Here is the raw text detected:
-    """
-    ${ocrText}
-    """
+    const prompt = `You are an intelligent AI assistant specialized in analyzing educational documents (exams or answer keys). Your task is to extract question details to build a grading rubric.
 
     **Instructions:**
-    1.  Use both the image visual layout and the provided OCR text to accurately identify each distinct question.
-    2.  For each question, extract its full text content. Clean up any OCR artifacts if necessary using the visual context.
-    3.  Identify the total marks allocated to each question. This is often indicated next to the question (e.g., "[5 marks]", "(10)", "5m"). If marks are not found for a question, default to 0.
-    4.  Structure the output as a JSON object containing a single key "questions", which is an array of question objects.
+    1.  **Extract Questions:** Analyze the document to accurately identify each distinct question and its full text.
+    2.  **Extract/Estimate Marks:** Identify the total marks allocated. **If not explicitly stated, YOU MUST ASSIGN a reasonable total mark** based on the question's complexity (e.g., 2-5 for short, 5-10 for complex).
+    3.  **Extract Expected Answer:** 
+        - Extract the **COMPLETE, VERBATIM SOLUTION** exactly as it appears in the answer key. 
+        - **Maintain Formatting:** Use Markdown for tables, lists, or code. Do not summarize.
+    4.  **GENERATE Marking Scheme:** 
+        - Create a distribution of marks using **Steps** and **Keywords**.
+        - **Steps:** Break down the logic into 2-4 key steps.
+        - **Keywords:** Identify 2-3 essential terms.
+    
+    **CRITICAL VALIDATION RULE:**
+    - You must ensure that **(Sum of all Step Marks) + (Sum of all Keyword Marks) EQUALS 'totalMarks'** for the question.
+    - Example: If Total is 5, you could have 3 marks for steps and 2 marks for keywords.
+    - Do not leave any marks unassigned.
 
-    Provide your response ONLY in the specified JSON format. Do not include any other text or explanations.
+    Structure the output as a JSON object containing a "questions" array.
     `;
 
     const responseSchema = {
@@ -168,14 +244,32 @@ export const extractQuestionsFromPaper = async (
           items: {
             type: Type.OBJECT,
             properties: {
-              question: {
-                type: Type.STRING,
-                description: 'The full text of the question.',
+              question: { type: Type.STRING },
+              totalMarks: { type: Type.NUMBER },
+              finalAnswer: { 
+                type: Type.STRING, 
+                description: "The complete, verbatim expected solution. Use Markdown for tables/formatting." 
               },
-              totalMarks: {
-                type: Type.NUMBER,
-                description: 'The total marks for the question. Default to 0 if not specified.',
+              steps: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        description: { type: Type.STRING },
+                        marks: { type: Type.NUMBER }
+                    }
+                }
               },
+              keywords: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        keyword: { type: Type.STRING },
+                        marks: { type: Type.NUMBER }
+                    }
+                }
+              }
             },
             required: ['question', 'totalMarks'],
           },
@@ -184,8 +278,9 @@ export const extractQuestionsFromPaper = async (
       required: ['questions'],
     };
 
+    console.log(`[GeminiService] Sending extraction request to Gemini...`);
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-2.5-flash',
       contents: { parts: [imagePart, { text: prompt }] },
       config: {
         responseMimeType: 'application/json',
@@ -193,17 +288,55 @@ export const extractQuestionsFromPaper = async (
       },
     });
 
-    const jsonText = response.text.trim();
+    let jsonText = response.text ? response.text.trim() : "";
+    
+    // Clean up markdown formatting if present
+    if (jsonText.startsWith('```')) {
+        jsonText = jsonText.replace(/^```(json)?\s*/, '').replace(/\s*```$/, '');
+    }
+
+    console.log(`[GeminiService] Response received.`);
     const result = JSON.parse(jsonText);
 
     if (!result.questions || !Array.isArray(result.questions)) {
       throw new Error('AI response did not contain a valid "questions" array.');
     }
 
-    return result.questions;
+    // --- POST-PROCESSING: Ensure Marks Balance ---
+    const sanitizedQuestions = result.questions.map((q: any) => {
+        const total = q.totalMarks || 0;
+        const steps = q.steps || [];
+        const keywords = q.keywords || [];
+
+        const stepSum = steps.reduce((acc: number, s: any) => acc + (s.marks || 0), 0);
+        const keywordSum = keywords.reduce((acc: number, k: any) => acc + (k.marks || 0), 0);
+        const currentSum = stepSum + keywordSum;
+
+        if (currentSum !== total) {
+            const diff = total - currentSum;
+            console.warn(`[GeminiService] Marks mismatch for "${q.question.substring(0, 15)}...". Total: ${total}, Sum: ${currentSum}. Adjusting...`);
+            
+            // Adjust the first step's marks to balance
+            if (steps.length > 0) {
+                // Ensure we don't drop below 0.5 if subtracting
+                let newMark = steps[0].marks + diff;
+                if (newMark < 0) newMark = 0; 
+                steps[0].marks = parseFloat(newMark.toFixed(1)); // round to 1 decimal
+            } else if (keywords.length > 0) {
+                 let newMark = keywords[0].marks + diff;
+                 if (newMark < 0) newMark = 0;
+                 keywords[0].marks = parseFloat(newMark.toFixed(1));
+            }
+        }
+        
+        return { ...q, steps, keywords };
+    });
+
+    console.log(`[GeminiService] Successfully extracted and validated ${sanitizedQuestions.length} questions.`);
+    return sanitizedQuestions;
 
   } catch (error) {
-    console.error('Error extracting questions with Gemini API:', error);
-    throw new Error('Failed to extract questions from the paper. Please check the image or try again.');
+    console.error('[GeminiService] Error extracting questions:', error);
+    throw new Error('Failed to extract questions from the paper. Please check the file format or try again.');
   }
 };

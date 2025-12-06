@@ -1,16 +1,29 @@
-import React from 'react';
-import { StudentSubmission, QuestionPaper } from '../../types';
+
+import React, { useState } from 'react';
+import { StudentSubmission, QuestionPaper, GradedResult } from '../../types';
 import { useAppContext } from '../../context/AppContext';
+import { gradeAnswerSheet } from '../../services/geminiService';
+import { useToast } from '../../context/ToastContext';
+import { Spinner } from '../../components/Spinner';
 
 interface ResultsPageProps {
     submission: StudentSubmission;
     questionPaper: QuestionPaper;
-    onDispute: (questionId: string, reason: string) => void; // This prop is kept for structure, but logic is context-driven
+    onDispute: (questionId: string, reason: string) => void;
 }
 
 export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPaper }) => {
     const { updateSubmission } = useAppContext();
     const { gradedResults } = submission;
+    const toast = useToast();
+    const [isGrading, setIsGrading] = useState(false);
+    
+    // Progress State
+    const [gradingProgress, setGradingProgress] = useState(0);
+    const [gradingStatus, setGradingStatus] = useState("Initializing AI...");
+
+    // Modal State
+    const [showAnswerSheet, setShowAnswerSheet] = useState(false);
 
     const handleDisputeClick = (questionId: string) => {
         const reason = prompt("Please provide a brief reason for your dispute:");
@@ -26,15 +39,170 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
         }
     };
 
+    // Allows the student to trigger AI grading instantly (Demo/Practice Mode)
+    const handleInstantGrade = async () => {
+        console.log(`[StudentPortal] Instant grading triggered for submission: ${submission.id}`);
+        setIsGrading(true);
+        setGradingProgress(0);
+        setGradingStatus("Preparing document for analysis...");
+
+        try {
+             // In demo mode with local blobs, we need to ensure we have a valid source
+             const source = submission.file || submission.previewUrl;
+             
+             // Validate source for demo
+             if (!submission.file && submission.previewUrl.includes('placehold.co')) {
+                 console.warn(`[StudentPortal] Grading blocked: Placeholder image detected.`);
+                 toast.error("Cannot grade this placeholder submission. Please upload a real file.");
+                 setIsGrading(false);
+                 return;
+             }
+
+             const newGradedResults: GradedResult[] = [];
+             const totalQuestions = questionPaper.rubric.length;
+             console.log(`[StudentPortal] Starting grading loop for ${totalQuestions} questions.`);
+             
+             for (let i = 0; i < totalQuestions; i++) {
+                 const rubricItem = questionPaper.rubric[i];
+                 
+                 // Update Status UI
+                 setGradingStatus(`Analyzing Question ${i + 1}/${totalQuestions}: "${rubricItem.question.substring(0, 30)}..."`);
+                 setGradingProgress(Math.round((i / totalQuestions) * 100));
+
+                 console.log(`[StudentPortal] Grading Question ID: ${rubricItem.id}`);
+                 const result = await gradeAnswerSheet(source, rubricItem);
+                 newGradedResults.push(result);
+                 
+                 // Small artificial delay to let the user see the progress bar moving (optional, improves UX feel)
+                 await new Promise(r => setTimeout(r, 500));
+             }
+
+             setGradingStatus("Finalizing results...");
+             setGradingProgress(100);
+
+             console.log(`[StudentPortal] All questions graded. Updating submission...`);
+             await updateSubmission({
+                 ...submission,
+                 gradedResults: newGradedResults,
+                 isGrading: false
+             });
+             console.log(`[StudentPortal] Submission updated successfully.`);
+             toast.success("Grading complete! View your detailed results below.");
+
+        } catch (error: any) {
+            console.error("[StudentPortal] Instant grading failed:", error);
+            toast.error(error.message || "Failed to grade submission.");
+        } finally {
+            setIsGrading(false);
+            setGradingProgress(0);
+        }
+    };
+
+    const isPdf = submission.file?.type === 'application/pdf';
+
+    const renderPdfFallback = (url: string) => (
+        <div className="flex flex-col items-center justify-center h-full p-8 text-center text-gray-500 bg-gray-50 rounded-lg border border-gray-200">
+            <svg className="w-12 h-12 mb-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <p className="mb-2 font-semibold">Preview not available inline.</p>
+            <p className="text-sm mb-4">Your browser may be blocking the PDF preview.</p>
+            <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline bg-blue-50 px-4 py-2 rounded-lg font-medium">
+                Open PDF in New Tab
+            </a>
+        </div>
+    );
+
     if (!gradedResults) {
         return (
-            <div className="bg-white p-6 rounded-lg shadow-md text-center">
-                <h3 className="text-2xl font-bold text-gray-800">Submission Received!</h3>
-                <p className="mt-2 text-gray-600">Your answer sheet for <span className="font-semibold">{questionPaper.title}</span> has been submitted successfully.</p>
-                <p className="mt-1 text-gray-600">Your teacher will grade it soon. Please check back later for your results.</p>
-                 <div className="mt-8">
-                    <h4 className="text-xl font-semibold text-gray-700 mb-4">Your Submission</h4>
-                    <img src={submission.previewUrl} alt="Your answer sheet" className="rounded-lg border shadow-sm w-full max-w-2xl mx-auto" />
+            <div className="max-w-6xl mx-auto space-y-8">
+                {/* Success Header */}
+                <div className="bg-white rounded-2xl shadow-sm border border-green-100 p-8 text-center relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-green-400 to-emerald-500"></div>
+                    <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <svg className="w-10 h-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                    </div>
+                    <h1 className="text-3xl font-extrabold text-gray-900 mb-2">Submission Successful!</h1>
+                    <p className="text-lg text-gray-600">
+                        Your answer sheet for <span className="font-bold text-gray-900">{questionPaper.title}</span> has been received.
+                    </p>
+                    <p className="text-sm text-gray-400 mt-2">Submission ID: {submission.id}</p>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Left Column: Actions & Status */}
+                    <div className="space-y-6">
+                        {/* Instant Grade Card */}
+                        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 rounded-2xl shadow-xl p-8 text-white relative overflow-hidden">
+                             {/* Decorative background circles */}
+                            <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 bg-white opacity-10 rounded-full blur-xl"></div>
+                            <div className="absolute bottom-0 left-0 -ml-8 -mb-8 w-24 h-24 bg-white opacity-10 rounded-full blur-xl"></div>
+
+                            <div className="relative z-10">
+                                <h3 className="text-2xl font-bold mb-3 flex items-center gap-2">
+                                    <svg className="w-6 h-6 text-yellow-300" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
+                                    AI Instant Grading
+                                </h3>
+                                <p className="text-blue-100 mb-8 leading-relaxed">
+                                    Don't wait for manual review. Our AI can analyze your submission against the rubric and provide detailed feedback instantly.
+                                </p>
+
+                                {!isGrading ? (
+                                    <button 
+                                        onClick={handleInstantGrade}
+                                        className="w-full bg-white text-blue-700 font-bold py-4 px-6 rounded-xl hover:bg-blue-50 transition-colors shadow-lg flex items-center justify-center gap-3 transform hover:-translate-y-1 duration-200"
+                                    >
+                                        <span>Get My Grade Now</span>
+                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                                    </button>
+                                ) : (
+                                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+                                        <div className="flex justify-between mb-2 text-sm font-medium text-blue-100">
+                                            <span>{gradingStatus}</span>
+                                            <span>{gradingProgress}%</span>
+                                        </div>
+                                        <div className="w-full bg-black/20 rounded-full h-3">
+                                            <div 
+                                                className="bg-green-400 h-3 rounded-full transition-all duration-300 shadow-[0_0_10px_rgba(74,222,128,0.5)]" 
+                                                style={{ width: `${gradingProgress}%` }}
+                                            ></div>
+                                        </div>
+                                        <p className="text-xs text-blue-200 mt-4 text-center animate-pulse">Analyzing steps & keywords...</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Right Column: Preview */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col h-full min-h-[400px]">
+                        <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                            <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                            Document Preview
+                        </h4>
+                        <div className="flex-grow bg-gray-100 rounded-xl border border-gray-200 overflow-hidden relative group">
+                            {isPdf ? (
+                                <div className="w-full h-full min-h-[300px]">
+                                    <object data={submission.previewUrl} type="application/pdf" className="w-full h-full">
+                                        {renderPdfFallback(submission.previewUrl)}
+                                    </object>
+                                </div>
+                            ) : (
+                                <img src={submission.previewUrl} alt="Submission" className="w-full h-full object-contain" />
+                            )}
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                                <p className="text-white font-medium bg-black/50 px-3 py-1 rounded-full backdrop-blur-sm">Hover to view</p>
+                            </div>
+                        </div>
+                         <button 
+                            onClick={() => window.open(submission.previewUrl, '_blank')}
+                            className="mt-4 w-full text-center text-sm text-gray-500 hover:text-gray-800 font-medium"
+                        >
+                            Open in new tab
+                        </button>
+                    </div>
                 </div>
             </div>
         );
@@ -44,59 +212,243 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
     const totalPossible = questionPaper.rubric.reduce((sum, item) => sum + item.totalMarks, 0);
 
     return (
-        <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="text-2xl font-bold text-gray-800">Your Graded Results for <span className="text-blue-600">{questionPaper.title}</span></h3>
-            <div className="my-4 p-4 bg-blue-50 rounded-lg flex items-center justify-between">
-                <p className="text-lg font-medium text-gray-700">Total Score</p>
-                <p className="text-3xl font-bold text-blue-600">{totalAwarded} / {totalPossible}</p>
+        <div className="bg-white p-6 rounded-lg shadow-md relative">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                <h3 className="text-2xl font-bold text-gray-800">Grading Results: <span className="text-blue-600">{questionPaper.title}</span></h3>
+                <button 
+                    onClick={() => setShowAnswerSheet(true)}
+                    className="flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm shadow-sm hover:shadow"
+                >
+                    <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                    View Answer Sheet
+                </button>
             </div>
             
-            <div className="mt-6">
-                <h4 className="text-xl font-semibold text-gray-700 mb-4">Detailed Breakdown</h4>
-                <div className="space-y-4">
-                    {gradedResults.map((result, index) => {
-                        const question = questionPaper.rubric.find(q => q.id === result.questionId);
-                        return (
-                            <div key={index} className={`p-4 rounded-lg border ${result.disputed ? 'bg-yellow-50 border-yellow-200' : 'bg-gray-50 border-gray-200'}`}>
-                                <div className="flex justify-between items-start">
-                                    <div>
-                                        <p className="font-semibold">{index + 1}. {question?.question}</p>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="font-bold text-lg">{result.marksAwarded} / {question?.totalMarks}</p>
+            <div className="my-6 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100 flex items-center justify-between">
+                <div>
+                    <p className="text-lg font-medium text-gray-600">Total Score</p>
+                    <div className="flex items-baseline gap-2">
+                         <p className="text-4xl font-extrabold text-blue-700">{totalAwarded}</p>
+                         <p className="text-xl font-medium text-gray-500">/ {totalPossible}</p>
+                    </div>
+                </div>
+                <div className="text-right hidden sm:block">
+                     <p className="text-sm text-blue-600 font-semibold uppercase tracking-wider">Performance</p>
+                     <p className="text-2xl font-bold text-gray-800">{Math.round((totalAwarded/totalPossible)*100)}%</p>
+                </div>
+            </div>
+            
+            <div className="mt-8 space-y-8">
+                {gradedResults.map((result, index) => {
+                    const question = questionPaper.rubric.find(q => q.id === result.questionId);
+                    
+                    // Access extra AI details safely
+                    const stepAnalysis = result.stepAnalysis;
+                    const keywordAnalysis = result.keywordAnalysis;
+
+                    const fullMarks = result.marksAwarded === question?.totalMarks;
+
+                    return (
+                        <div key={index} className={`rounded-xl border-2 overflow-hidden transition-all ${result.disputed ? 'border-yellow-300 shadow-md' : 'border-gray-200 hover:border-blue-300'}`}>
+                            {/* Header */}
+                            <div className="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-start gap-4">
+                                <div>
+                                    <h4 className="font-bold text-gray-900 text-lg">Q{index + 1}: {question?.question}</h4>
+                                    <div className="flex gap-2 mt-1">
+                                         {fullMarks && <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded-full">Perfect Score</span>}
+                                         {result.disputed && <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded-full">Disputed</span>}
                                     </div>
                                 </div>
-                                <div className="mt-3 text-sm space-y-2">
-                                    <p><strong className="text-gray-600">AI Feedback:</strong> <span className="text-gray-700">{result.feedback}</span></p>
-                                    <div>
-                                        <strong className="text-gray-600">Improvement Suggestions:</strong>
-                                        <ul className="list-disc list-inside pl-2 text-gray-700">
-                                            {result.improvementSuggestions.map((s, i) => <li key={i}>{s}</li>)}
-                                        </ul>
-                                    </div>
+                                <div className="text-right flex-shrink-0 bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm">
+                                    <p className="text-2xl font-bold text-gray-900">{result.marksAwarded}</p>
+                                    <p className="text-xs text-gray-500 uppercase font-bold">out of {question?.totalMarks}</p>
                                 </div>
-                                <div className="mt-4 text-right">
-                                    {result.disputed ? (
-                                        <span className="text-sm font-medium text-yellow-700">Dispute sent for review</span>
+                            </div>
+                            
+                            <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* Left Column: Detailed Step Analysis (Where marks were given/cut) */}
+                                <div>
+                                    <h5 className="text-sm font-bold text-gray-700 uppercase mb-3 flex items-center gap-2">
+                                        <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                                        Step-by-Step Breakdown
+                                    </h5>
+                                    
+                                    {stepAnalysis && stepAnalysis.length > 0 ? (
+                                        <div className="space-y-3">
+                                            {stepAnalysis.map((step, idx) => (
+                                                <div key={idx} className={`p-3 rounded-lg border flex items-start justify-between gap-3 ${
+                                                    step.status === 'Correct' ? 'bg-green-50 border-green-100' : 
+                                                    step.status === 'Partial' ? 'bg-yellow-50 border-yellow-100' : 
+                                                    'bg-red-50 border-red-100'
+                                                }`}>
+                                                    <div className="flex-1 flex items-start gap-2 min-w-0">
+                                                        <div className={`mt-0.5 flex-shrink-0 ${
+                                                            step.status === 'Correct' ? 'text-green-500' : 
+                                                            step.status === 'Partial' ? 'text-yellow-500' : 
+                                                            'text-red-500'
+                                                        }`}>
+                                                            {step.status === 'Correct' ? (
+                                                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                                            ) : (
+                                                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                                            )}
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <p className={`text-sm font-medium ${step.status === 'Missing' ? 'text-gray-500 line-through decoration-red-300' : 'text-gray-800'}`}>
+                                                                {step.stepDescription}
+                                                            </p>
+                                                            {step.status !== 'Correct' && (
+                                                                <p className="text-xs text-red-500 mt-1 font-medium">
+                                                                    {step.status === 'Missing' ? 'Step Missing' : 'Partially Correct'}
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <span className={`text-xs font-bold px-2 py-1 rounded flex-shrink-0 whitespace-nowrap ${
+                                                        step.status === 'Correct' ? 'bg-green-200 text-green-800' : 
+                                                        step.status === 'Partial' ? 'bg-yellow-200 text-yellow-800' : 
+                                                        'bg-red-200 text-red-800'
+                                                    }`}>
+                                                        {step.marksAwarded} {step.maxMarks ? `/ ${step.maxMarks}` : ''}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
                                     ) : (
-                                        <button 
-                                            onClick={() => handleDisputeClick(result.questionId)}
-                                            className="text-sm bg-red-500 text-white px-3 py-1 rounded-md hover:bg-red-600 transition-colors"
-                                        >
-                                            Raise Dispute
-                                        </button>
+                                        <p className="text-sm text-gray-500 italic">No specific steps defined for this question.</p>
+                                    )}
+
+                                    {/* Keywords Section */}
+                                    {keywordAnalysis && keywordAnalysis.length > 0 && (
+                                        <div className="mt-4">
+                                            <p className="text-xs font-semibold text-gray-500 mb-2">KEYWORD CHECK:</p>
+                                            <div className="flex flex-wrap gap-2">
+                                                {keywordAnalysis.map((kw, idx) => (
+                                                    <span key={idx} className={`text-xs px-2 py-1 rounded border flex items-center gap-1 flex-shrink-0 whitespace-nowrap ${
+                                                        kw.present 
+                                                        ? 'bg-green-50 border-green-200 text-green-700' 
+                                                        : 'bg-red-50 border-red-200 text-red-400 opacity-70'
+                                                    }`} title={kw.maxMarks ? `Max: ${kw.maxMarks} marks` : ''}>
+                                                        {kw.present ? '✓' : '✗'} {kw.keyword} {kw.marksAwarded !== undefined ? `(${kw.marksAwarded}/${kw.maxMarks || '-'})` : ''}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Right Column: Feedback & Suggestions */}
+                                <div className="space-y-4">
+                                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                                        <h5 className="text-sm font-bold text-blue-800 uppercase mb-2 flex items-center gap-2">
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
+                                            Detailed AI Feedback
+                                        </h5>
+                                        <p className="text-sm text-blue-900 leading-relaxed whitespace-pre-wrap">{result.feedback}</p>
+                                    </div>
+
+                                    {result.improvementSuggestions && result.improvementSuggestions.length > 0 && (
+                                        <div className="bg-purple-50 p-4 rounded-lg border border-purple-100">
+                                            <h5 className="text-sm font-bold text-purple-800 uppercase mb-2 flex items-center gap-2">
+                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                                                To Improve
+                                            </h5>
+                                            <ul className="list-disc list-inside space-y-1">
+                                                {result.improvementSuggestions.map((s, i) => (
+                                                    <li key={i} className="text-sm text-purple-900">{s}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                    
+                                    {result.resolutionComment && (
+                                        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                                            <h5 className="text-sm font-bold text-green-800 uppercase mb-1">Teacher's Note</h5>
+                                            <p className="text-sm text-green-700">{result.resolutionComment}</p>
+                                        </div>
                                     )}
                                 </div>
                             </div>
-                        );
-                    })}
-                </div>
+
+                            {/* Footer Actions */}
+                            <div className="bg-gray-50 px-5 py-3 border-t border-gray-200 flex justify-end">
+                                {result.disputed ? (
+                                    <span className="inline-flex items-center gap-2 text-sm font-medium text-yellow-700 bg-yellow-100 px-3 py-1.5 rounded-md">
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                        Dispute Sent for Review
+                                    </span>
+                                ) : (
+                                    <button 
+                                        onClick={() => handleDisputeClick(result.questionId)}
+                                        className="text-sm font-medium text-red-600 hover:text-red-800 hover:bg-red-50 px-3 py-1.5 rounded transition-colors"
+                                    >
+                                        Raise a Dispute
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
 
-            <div className="mt-8">
-                 <h4 className="text-xl font-semibold text-gray-700 mb-4">Your Submission</h4>
-                 <img src={submission.previewUrl} alt="Your answer sheet" className="rounded-lg border shadow-sm w-full max-w-2xl mx-auto" />
+            <div className="mt-12">
+                 <h4 className="text-xl font-semibold text-gray-700 mb-4 pb-2 border-b border-gray-200">Original Answer Sheet</h4>
+                 {isPdf ? (
+                    <div className="rounded-lg border shadow-sm w-full h-[600px] bg-gray-100 overflow-hidden">
+                         <object data={submission.previewUrl} type="application/pdf" className="w-full h-full">
+                             {renderPdfFallback(submission.previewUrl)}
+                         </object>
+                    </div>
+                 ) : (
+                    <div className="bg-gray-100 p-4 rounded-lg border border-gray-200">
+                         <img src={submission.previewUrl} alt="Your answer sheet" className="rounded shadow-sm w-full max-w-4xl mx-auto" />
+                    </div>
+                 )}
             </div>
+
+             {/* Floating Action Button for Answer Sheet */}
+            <button
+                onClick={() => setShowAnswerSheet(true)}
+                className="fixed bottom-8 right-8 z-40 bg-blue-600 text-white px-4 py-3 rounded-full shadow-lg hover:bg-blue-700 transition-transform hover:scale-105 flex items-center gap-2"
+                title="View Answer Sheet"
+            >
+                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                <span className="font-semibold hidden sm:inline">View Answer Sheet</span>
+            </button>
+
+            {/* Answer Sheet Modal */}
+            {showAnswerSheet && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4 backdrop-blur-sm" onClick={() => setShowAnswerSheet(false)}>
+                    <div className="bg-white rounded-xl w-full max-w-5xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-dropdown" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                            <h3 className="font-bold text-gray-800 text-lg">Original Answer Sheet</h3>
+                            <button 
+                                onClick={() => setShowAnswerSheet(false)}
+                                className="text-gray-500 hover:text-gray-700 p-1 rounded-full hover:bg-gray-200 transition-colors"
+                            >
+                                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+                        <div className="flex-grow overflow-auto p-4 bg-gray-100 flex justify-center">
+                             {isPdf ? (
+                                <div className="w-full h-full">
+                                    <object data={submission.previewUrl} type="application/pdf" className="w-full h-full rounded bg-white shadow-sm">
+                                        {renderPdfFallback(submission.previewUrl)}
+                                    </object>
+                                </div>
+                            ) : (
+                                <img src={submission.previewUrl} alt="Original Submission" className="max-w-full h-auto object-contain rounded shadow-sm" />
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

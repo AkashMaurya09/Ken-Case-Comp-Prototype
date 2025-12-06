@@ -52,6 +52,18 @@ export interface GradedResult {
   disputed: boolean;
   disputeReason?: string;
   resolutionComment?: string;
+  stepAnalysis?: {
+      stepDescription: string;
+      marksAwarded: number;
+      maxMarks: number;
+      status: string; // 'Correct' | 'Partial' | 'Missing'
+  }[];
+  keywordAnalysis?: {
+      keyword: string;
+      present: boolean;
+      marksAwarded: number;
+      maxMarks: number;
+  }[];
 }
 
 export enum GradingStatus {

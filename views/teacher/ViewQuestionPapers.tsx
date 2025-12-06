@@ -10,14 +10,16 @@ interface ViewQuestionPapersProps {
     initialPaperId?: string;
     initialSubmissionId?: string;
     onNavigationComplete?: () => void;
+    onEdit?: (paper: QuestionPaper) => void;
 }
 
 export const ViewQuestionPapers: React.FC<ViewQuestionPapersProps> = ({ 
     initialPaperId, 
     initialSubmissionId,
-    onNavigationComplete
+    onNavigationComplete,
+    onEdit
 }) => {
-    const { questionPapers, studentSubmissions } = useAppContext();
+    const { questionPapers, studentSubmissions, deleteQuestionPaper } = useAppContext();
     const [selectedPaper, setSelectedPaper] = useState<QuestionPaper | null>(null);
     const [isSeeding, setIsSeeding] = useState(false);
     const toast = useToast();
@@ -47,6 +49,16 @@ export const ViewQuestionPapers: React.FC<ViewQuestionPapersProps> = ({
             toast.error("Failed to load demo data. Check permissions.");
         } finally {
             setIsSeeding(false);
+        }
+    };
+
+    const handleDelete = async (paper: QuestionPaper) => {
+        if (window.confirm(`Are you sure you want to delete "${paper.title}"? This action cannot be undone.`)) {
+            try {
+                await deleteQuestionPaper(paper.id);
+            } catch (error) {
+                // Error handled in context
+            }
         }
     };
 
@@ -86,7 +98,7 @@ export const ViewQuestionPapers: React.FC<ViewQuestionPapersProps> = ({
                 ) : (
                     <div className="space-y-4">
                         {questionPapers.map(paper => (
-                            <div key={paper.id} className="bg-white p-4 rounded-lg shadow-sm border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div key={paper.id} className="bg-white p-4 rounded-lg shadow-sm border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all hover:shadow-md">
                                 <div>
                                     <h3 className="text-lg font-semibold text-gray-800">{paper.title}</h3>
                                     <div className="flex items-center gap-4 text-sm text-gray-600 mt-1">
@@ -96,12 +108,34 @@ export const ViewQuestionPapers: React.FC<ViewQuestionPapersProps> = ({
                                         )}
                                     </div>
                                 </div>
-                                <button
-                                    onClick={() => setSelectedPaper(paper)}
-                                    className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors whitespace-nowrap"
-                                >
-                                    Grade Submissions
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    {onEdit && (
+                                        <button
+                                            onClick={() => onEdit(paper)}
+                                            className="bg-gray-50 text-gray-600 p-2 rounded-md hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 border border-transparent transition-all"
+                                            title="Edit Paper"
+                                        >
+                                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                            </svg>
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => handleDelete(paper)}
+                                        className="bg-red-50 text-red-500 p-2 rounded-md border border-red-100 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all shadow-sm"
+                                        title="Delete Paper"
+                                    >
+                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                    </button>
+                                    <button
+                                        onClick={() => setSelectedPaper(paper)}
+                                        className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors whitespace-nowrap shadow-sm hover:shadow"
+                                    >
+                                        Grade Submissions
+                                    </button>
+                                </div>
                             </div>
                         ))}
                     </div>

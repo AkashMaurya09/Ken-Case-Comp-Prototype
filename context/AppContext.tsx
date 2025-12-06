@@ -1,15 +1,15 @@
 
 import React, { createContext, useState, useContext, ReactNode, FC, useEffect } from 'react';
 import { QuestionPaper, StudentSubmission } from '../types';
-import { db, storage } from '../services/firebase';
-import { collection, onSnapshot, doc, updateDoc, setDoc, query, orderBy } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useToast } from './ToastContext';
+import { LocalDB } from '../services/indexedDBService';
 
 interface AppContextType {
   questionPapers: QuestionPaper[];
   studentSubmissions: StudentSubmission[];
   addQuestionPaper: (paper: QuestionPaper) => Promise<void>;
+  updateQuestionPaper: (paper: QuestionPaper) => Promise<void>;
+  deleteQuestionPaper: (paperId: string) => Promise<void>;
   addStudentSubmission: (submission: StudentSubmission) => Promise<void>;
   updateSubmission: (updatedSubmission: StudentSubmission) => Promise<void>;
   isLoading: boolean;
@@ -17,104 +17,167 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+// Helper for client-side image compression
+const compressImage = (file: File): Promise<Blob> => {
+    console.log(`[AppContext] compressImage: Starting compression for ${file.name} (${file.size} bytes)`);
+    return new Promise((resolve) => {
+        // Only compress images
+        if (!file.type.match(/image.*/)) {
+            console.log(`[AppContext] compressImage: File is not an image, returning raw file.`);
+            return resolve(file);
+        }
+
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target?.result as string;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 1200; 
+                const scaleSize = MAX_WIDTH / img.width;
+                const width = (scaleSize < 1) ? MAX_WIDTH : img.width;
+                const height = (scaleSize < 1) ? img.height * scaleSize : img.height;
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    console.warn(`[AppContext] compressImage: Failed to get canvas context.`);
+                    return resolve(file);
+                }
+
+                // Draw white background to handle transparency
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, width, height);
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                canvas.toBlob((blob) => {
+                    if (!blob) {
+                         console.warn(`[AppContext] compressImage: Failed to create blob.`);
+                         return resolve(file);
+                    }
+                    console.log(`[AppContext] compressImage: Compression finished. New size: ${blob.size} bytes`);
+                    resolve(blob);
+                }, 'image/jpeg', 0.7);
+            };
+            img.onerror = () => {
+                console.error(`[AppContext] compressImage: Image loading error.`);
+                resolve(file);
+            };
+        };
+        reader.onerror = () => {
+            console.error(`[AppContext] compressImage: FileReader error.`);
+            resolve(file);
+        };
+    });
+};
+
 export const AppProvider: FC<{ children: ReactNode }> = ({ children }) => {
   const [questionPapers, setQuestionPapers] = useState<QuestionPaper[]>([]);
   const [studentSubmissions, setStudentSubmissions] = useState<StudentSubmission[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const toast = useToast();
 
+  const refreshData = async () => {
+      try {
+          const papers = await LocalDB.getAllQuestionPapers();
+          setQuestionPapers(papers);
+          const submissions = await LocalDB.getAllSubmissions();
+          setStudentSubmissions(submissions);
+      } catch (e) {
+          console.error("Failed to refresh local data", e);
+      }
+  };
+
   useEffect(() => {
     setIsLoading(true);
-    // Subscribe to Question Papers
-    const qpQuery = query(collection(db, 'questionPapers'), orderBy('createdAt', 'desc')); 
-    const unsubscribeQP = onSnapshot(qpQuery, (snapshot) => {
-        const papers = snapshot.docs.map(doc => {
-             const data = doc.data();
-             if (data.createdAt && data.createdAt.toDate) {
-                 data.createdAt = data.createdAt.toDate();
-             }
-             return { id: doc.id, ...data } as QuestionPaper;
-        });
-        setQuestionPapers(papers);
-    }, (error) => {
-        console.error("Error fetching question papers:", error);
-        // Only show error if it's not a permission error (which happens before login)
-        if (error.code !== 'permission-denied') {
-            toast.error("Failed to load question papers.");
-        }
-    });
-
-    // Subscribe to Submissions
-    const subQuery = query(collection(db, 'submissions'), orderBy('submissionDate', 'desc'));
-    const unsubscribeSub = onSnapshot(subQuery, (snapshot) => {
-        const submissions = snapshot.docs.map(doc => {
-            const data = doc.data();
-            // Convert Firestore Timestamp to Date
-            if (data.submissionDate && data.submissionDate.toDate) {
-                data.submissionDate = data.submissionDate.toDate();
-            }
-            return { id: doc.id, ...data } as StudentSubmission;
-        });
-        setStudentSubmissions(submissions);
-        setIsLoading(false);
-    }, (error) => {
-        console.error("Error fetching submissions:", error);
-        if (error.code !== 'permission-denied') {
-            toast.error("Failed to load submissions.");
-        }
-        setIsLoading(false);
-    });
-
-    return () => {
-        unsubscribeQP();
-        unsubscribeSub();
-    };
+    refreshData().finally(() => setIsLoading(false));
   }, []);
 
   const addQuestionPaper = async (paper: QuestionPaper) => {
+    console.log(`[AppContext] addQuestionPaper: Triggered for paper ID: ${paper.id}`);
     try {
-        let downloadURL = paper.modelAnswerPreviewUrl;
+        let blobToStore: Blob | undefined = undefined;
 
-        // Upload file if it exists (which it should for new papers)
         if (paper.modelAnswerFile) {
-            const storageRef = ref(storage, `papers/${paper.id}/${paper.modelAnswerFile.name}`);
-            await uploadBytes(storageRef, paper.modelAnswerFile);
-            downloadURL = await getDownloadURL(storageRef);
+            console.log(`[AppContext] STEP 1: Compressing model answer file...`);
+            blobToStore = await compressImage(paper.modelAnswerFile);
+        } else {
+            console.log(`[AppContext] No new file provided.`);
         }
 
-        const paperData = { ...paper, createdAt: new Date() };
-        delete paperData.modelAnswerFile; // Don't store File object in Firestore
-        paperData.modelAnswerPreviewUrl = downloadURL;
+        console.log(`[AppContext] STEP 2: Saving to Local IndexedDB...`);
+        await LocalDB.saveQuestionPaper(paper, blobToStore);
+        
+        console.log(`[AppContext] STEP 3: Save successful. Refreshing state.`);
+        await refreshData();
+        toast.success("Question paper saved locally!");
 
-        await setDoc(doc(db, 'questionPapers', paper.id), paperData);
-        toast.success("Question paper created successfully!");
-
-    } catch (error) {
-        console.error("Error adding question paper:", error);
-        toast.error("Failed to save question paper.");
+    } catch (error: any) {
+        console.error("[AppContext] Error adding question paper:", error);
+        toast.error(`Save failed: ${error.message}`);
         throw error;
     }
   };
 
-  const addStudentSubmission = async (submission: StudentSubmission) => {
+  const updateQuestionPaper = async (updatedPaper: QuestionPaper) => {
+    console.log(`[AppContext] updateQuestionPaper: Triggered for paper ID: ${updatedPaper.id}`);
     try {
-        let downloadURL = submission.previewUrl;
+        let blobToStore: Blob | undefined = undefined;
 
-        if (submission.file) {
-            const storageRef = ref(storage, `submissions/${submission.id}/${submission.file.name}`);
-            await uploadBytes(storageRef, submission.file);
-            downloadURL = await getDownloadURL(storageRef);
+        if (updatedPaper.modelAnswerFile) {
+            if (updatedPaper.modelAnswerFile instanceof File) {
+                console.log(`[AppContext] updateQuestionPaper: New file detected. Compressing...`);
+                blobToStore = await compressImage(updatedPaper.modelAnswerFile);
+            } else {
+                console.log(`[AppContext] updateQuestionPaper: Existing Blob detected. Preserving.`);
+                blobToStore = updatedPaper.modelAnswerFile;
+            }
         }
 
-        const submissionData = { ...submission };
-        delete submissionData.file; // Don't store File object
-        submissionData.previewUrl = downloadURL;
+        await LocalDB.saveQuestionPaper(updatedPaper, blobToStore);
+        await refreshData();
+        toast.success("Question paper updated locally.");
+    } catch (error) {
+        console.error("[AppContext] Error updating question paper:", error);
+        toast.error("Failed to update question paper.");
+        throw error;
+    }
+  };
 
-        await setDoc(doc(db, 'submissions', submission.id), submissionData);
-        toast.success("Submission uploaded successfully!");
+  const deleteQuestionPaper = async (paperId: string) => {
+      console.log(`[AppContext] deleteQuestionPaper: Triggered for ID: ${paperId}`);
+      try {
+          await LocalDB.deleteQuestionPaper(paperId);
+          await refreshData();
+          toast.success("Question paper deleted.");
+      } catch (error) {
+          console.error("[AppContext] Error deleting question paper:", error);
+          toast.error("Failed to delete question paper.");
+          throw error;
+      }
+  }
+
+  const addStudentSubmission = async (submission: StudentSubmission) => {
+    console.log(`[AppContext] addStudentSubmission: Triggered for Submission ID: ${submission.id}`);
+    try {
+        let blobToStore: Blob | undefined = undefined;
+
+        if (submission.file) {
+            console.log(`[AppContext] addStudentSubmission: Compressing submission file...`);
+            blobToStore = await compressImage(submission.file);
+        }
+
+        console.log(`[AppContext] addStudentSubmission: Saving to LocalDB...`);
+        await LocalDB.saveSubmission(submission, blobToStore);
+        
+        await refreshData();
+        console.log(`[AppContext] addStudentSubmission: Saved successfully.`);
+        toast.success("Submission uploaded locally!");
 
     } catch (error) {
-        console.error("Error adding submission:", error);
+        console.error("[AppContext] Error adding submission:", error);
         toast.error("Failed to save submission.");
         throw error;
     }
@@ -122,22 +185,19 @@ export const AppProvider: FC<{ children: ReactNode }> = ({ children }) => {
 
   const updateSubmission = async (updatedSubmission: StudentSubmission) => {
     try {
-        const submissionRef = doc(db, 'submissions', updatedSubmission.id);
-        const dataToUpdate = { ...updatedSubmission };
-        delete dataToUpdate.file; // Ensure no File objects
-
-        await updateDoc(submissionRef, dataToUpdate);
-        // Toast is handled by the calling component usually, or we can add here
-        // toast.success("Submission updated.");
+        // When updating grades, we just save the object. 
+        // We don't usually change the file here, so pass undefined for blob to preserve existing.
+        await LocalDB.saveSubmission(updatedSubmission);
+        await refreshData();
     } catch (error) {
-        console.error("Error updating submission:", error);
+        console.error("[AppContext] Error updating submission:", error);
         toast.error("Failed to update submission.");
         throw error;
     }
   };
 
   return (
-    <AppContext.Provider value={{ questionPapers, studentSubmissions, addQuestionPaper, addStudentSubmission, updateSubmission, isLoading }}>
+    <AppContext.Provider value={{ questionPapers, studentSubmissions, addQuestionPaper, updateQuestionPaper, deleteQuestionPaper, addStudentSubmission, updateSubmission, isLoading }}>
       {children}
     </AppContext.Provider>
   );
