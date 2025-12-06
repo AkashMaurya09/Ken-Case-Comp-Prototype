@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IntelliGrade</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes slide-up {
+            from {
+                transform: translateY(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        .animate-slide-up {
+            animation: slide-up 0.3s ease-out forwards;
+        }
+        
+        /* Sleek Dropdown Animation */
+        @keyframes dropdown-enter {
+            from {
+                opacity: 0;
+                transform: translateY(-10px) scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+        .animate-dropdown {
+            animation: dropdown-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/client": "https://aistudiocdn.com/react-dom@^19.2.0/client",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.28.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "tesseract.js": "https://cdn.jsdelivr.net/npm/tesseract.js@5.0.5/+esm",
+    "firebase/app": "https://aistudiocdn.com/firebase@^12.6.0/app",
+    "firebase/auth": "https://aistudiocdn.com/firebase@^12.6.0/auth",
+    "firebase/firestore": "https://aistudiocdn.com/firebase@^12.6.0/firestore",
+    "firebase/storage": "https://aistudiocdn.com/firebase@^12.6.0/storage",
+    "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/"
+  }
+}
+</script>
+</head>
+  <body class="bg-slate-50 text-slate-800">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
