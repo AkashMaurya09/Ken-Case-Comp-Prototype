@@ -9,7 +9,7 @@ interface ResolveDisputesProps {
 export const ResolveDisputes: React.FC<ResolveDisputesProps> = ({ onReview }) => {
     const { questionPapers, studentSubmissions } = useAppContext();
 
-    const disputedItems = studentSubmissions.flatMap(submission => {
+    const allDisputedItems = studentSubmissions.flatMap(submission => {
         const paper = questionPapers.find(p => p.id === submission.paperId);
         if (!paper || !submission.gradedResults) return [];
 
@@ -31,13 +31,22 @@ export const ResolveDisputes: React.FC<ResolveDisputesProps> = ({ onReview }) =>
             });
     });
 
+    const displayedDisputes = allDisputedItems.slice(0, 6);
+
     return (
         <div>
-            <h2 className="text-3xl font-bold text-gray-800">Resolve Disputes</h2>
-            <p className="mt-2 text-gray-600">Review student-raised disputes and adjust grades if necessary.</p>
+            <div className="flex justify-between items-end">
+                <div>
+                    <h2 className="text-3xl font-bold text-gray-800">Resolve Disputes</h2>
+                    <p className="mt-2 text-gray-600">Review student-raised disputes and adjust grades if necessary.</p>
+                </div>
+                {allDisputedItems.length > 6 && (
+                    <p className="text-sm text-gray-500 italic mb-1">Showing 6 of {allDisputedItems.length} active disputes</p>
+                )}
+            </div>
             
             <div className="mt-8">
-                {disputedItems.length === 0 ? (
+                {displayedDisputes.length === 0 ? (
                     <div className="bg-white p-8 rounded-lg shadow-md text-center">
                         <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-16 w-16 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -47,7 +56,7 @@ export const ResolveDisputes: React.FC<ResolveDisputesProps> = ({ onReview }) =>
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        {disputedItems.map((item, index) => (
+                        {displayedDisputes.map((item, index) => (
                             <div key={index} className="bg-white p-5 rounded-lg shadow-sm border border-yellow-300">
                                 <div className="flex justify-between items-start">
                                     <div>

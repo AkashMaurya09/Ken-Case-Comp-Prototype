@@ -337,29 +337,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigate }
                         </div>
                     </div>
 
-                    {/* Quick Shortcuts */}
-                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-                        <h3 className="font-bold text-gray-800 mb-4">Quick Shortcuts</h3>
-                        <div className="grid grid-cols-2 gap-3">
-                            <button onClick={() => onNavigate('view')} className="p-3 bg-gray-50 rounded-lg hover:bg-blue-50 hover:text-blue-600 transition-colors text-center">
-                                <span className="block text-2xl mb-1">📝</span>
-                                <span className="text-xs font-semibold text-gray-600">Grade Papers</span>
-                            </button>
-                            <button onClick={() => onNavigate('analytics')} className="p-3 bg-gray-50 rounded-lg hover:bg-purple-50 hover:text-purple-600 transition-colors text-center">
-                                <span className="block text-2xl mb-1">📊</span>
-                                <span className="text-xs font-semibold text-gray-600">Reports</span>
-                            </button>
-                            <button onClick={() => onNavigate('disputes')} className="p-3 bg-gray-50 rounded-lg hover:bg-red-50 hover:text-red-600 transition-colors text-center">
-                                <span className="block text-2xl mb-1">⚖️</span>
-                                <span className="text-xs font-semibold text-gray-600">Disputes</span>
-                            </button>
-                            <button className="p-3 bg-gray-50 rounded-lg hover:bg-green-50 hover:text-green-600 transition-colors text-center" onClick={() => {}}>
-                                <span className="block text-2xl mb-1">⚙️</span>
-                                <span className="text-xs font-semibold text-gray-600">Settings</span>
-                            </button>
-                        </div>
-                    </div>
-
                     {/* System Status (Mock) */}
                     <div className="bg-slate-800 rounded-xl p-5 text-white shadow-md">
                         <h3 className="font-bold text-sm uppercase tracking-wide opacity-80 mb-4">System Status</h3>

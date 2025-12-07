@@ -6,6 +6,7 @@ import { FileUpload } from '../../components/FileUpload';
 import { GradingInterface } from './GradingInterface';
 import { gradeAnswerSheet } from '../../services/geminiService';
 import { useToast } from '../../context/ToastContext';
+import { triggerConfetti } from '../../utils/confetti';
 
 interface GradingDashboardProps {
   paper: QuestionPaper;
@@ -113,6 +114,7 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
             gradedResults 
         });
         toast.success("Grading complete!");
+        triggerConfetti();
 
     } catch (error: any) {
         console.error("Grading failed:", error);

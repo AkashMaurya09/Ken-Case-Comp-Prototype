@@ -1,5 +1,7 @@
+
 import React, { useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { getMockStudentData } from '../../services/seeder';
 
 const MOCK_STUDENT_NAME = "Jane Doe";
 
@@ -96,7 +98,20 @@ const ScoreTrendChart: React.FC<{ data: { name: string; score: number }[] }> = (
 
 
 export const MyAnalytics: React.FC = () => {
-    const { questionPapers, studentSubmissions } = useAppContext();
+    const { questionPapers: realPapers, studentSubmissions: realSubmissions } = useAppContext();
+
+    // --- Mock Data Handling ---
+    const mockData = useMemo(() => {
+        const hasRealData = realSubmissions.some(s => s.studentName === MOCK_STUDENT_NAME);
+        if (!hasRealData) {
+            return getMockStudentData();
+        }
+        return null;
+    }, [realSubmissions]);
+
+    const usingMockData = !!mockData;
+    const questionPapers = usingMockData ? mockData!.questionPapers : realPapers;
+    const studentSubmissions = usingMockData ? mockData!.studentSubmissions : realSubmissions;
 
     const myGradedSubmissions = useMemo(() => {
         return studentSubmissions.filter(s => s.studentName === MOCK_STUDENT_NAME && s.gradedResults);
@@ -169,48 +184,47 @@ export const MyAnalytics: React.FC = () => {
                 <p className="mt-2 text-gray-600">Visualize your performance to identify strengths and areas for improvement.</p>
             </header>
 
-            {myGradedSubmissions.length === 0 ? (
-                 <div className="bg-white p-8 rounded-lg shadow-md text-center mt-8">
-                     <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-16 w-16 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                     <h3 className="mt-4 text-xl font-semibold text-gray-700">No Data Available</h3>
-                     <p className="mt-2 text-gray-500">Complete and submit a paper to see your analytics.</p>
-                 </div>
-            ) : (
-                <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <ChartCard 
-                        title="Performance vs. Class Average" 
-                        description="See how your score (blue) compares to the class average (gray) for each paper."
-                        className="lg:col-span-2"
-                    >
-                        <PerformanceComparisonChart data={performanceComparisonData} />
-                    </ChartCard>
-                   
-                    <ChartCard title="Overall Score Trend" description="Track your performance over time across all submitted papers.">
-                       {scoreTrendData.length > 0 ? (
-                           <ScoreTrendChart data={scoreTrendData} />
-                       ) : (
-                           <p className="text-gray-500">Not enough data to show a trend.</p>
-                       )}
-                    </ChartCard>
-
-                    <ChartCard title="Common Improvement Areas" description="Based on AI feedback, these are your most frequent suggestions.">
-                        <div className="w-full h-full flex flex-wrap gap-4 justify-center items-center">
-                            {improvementAreasData.length > 0 ? (
-                                improvementAreasData.map(({suggestion, count}) => (
-                                     <div key={suggestion} className="relative group">
-                                         <span className="bg-blue-100 text-blue-800 text-sm font-medium px-4 py-2 rounded-full">{suggestion}</span>
-                                         <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-max bg-gray-700 text-white text-xs rounded py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                             Suggested {count} time{count > 1 ? 's' : ''}
-                                         </span>
-                                     </div>
-                                ))
-                            ) : (
-                                <p className="text-gray-500">No specific improvement areas identified yet. Keep up the great work!</p>
-                            )}
-                        </div>
-                    </ChartCard>
+            {usingMockData && (
+                <div className="bg-indigo-50 border border-indigo-200 text-indigo-700 px-4 py-3 rounded-lg mt-4 flex items-center gap-2 text-sm">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <strong>Preview Mode:</strong> Showing sample performance data because you haven't completed any assignments yet.
                 </div>
             )}
+
+            <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <ChartCard 
+                    title="Performance vs. Class Average" 
+                    description="See how your score (blue) compares to the class average (gray) for each paper."
+                    className="lg:col-span-2"
+                >
+                    <PerformanceComparisonChart data={performanceComparisonData} />
+                </ChartCard>
+                
+                <ChartCard title="Overall Score Trend" description="Track your performance over time across all submitted papers.">
+                    {scoreTrendData.length > 0 ? (
+                        <ScoreTrendChart data={scoreTrendData} />
+                    ) : (
+                        <p className="text-gray-500">Not enough data to show a trend.</p>
+                    )}
+                </ChartCard>
+
+                <ChartCard title="Common Improvement Areas" description="Based on AI feedback, these are your most frequent suggestions.">
+                    <div className="w-full h-full flex flex-wrap gap-4 justify-center items-center">
+                        {improvementAreasData.length > 0 ? (
+                            improvementAreasData.map(({suggestion, count}) => (
+                                    <div key={suggestion} className="relative group">
+                                        <span className="bg-blue-100 text-blue-800 text-sm font-medium px-4 py-2 rounded-full">{suggestion}</span>
+                                        <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-max bg-gray-700 text-white text-xs rounded py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            Suggested {count} time{count > 1 ? 's' : ''}
+                                        </span>
+                                    </div>
+                            ))
+                        ) : (
+                            <p className="text-gray-500">No specific improvement areas identified yet. Keep up the great work!</p>
+                        )}
+                    </div>
+                </ChartCard>
+            </div>
         </div>
     );
 };

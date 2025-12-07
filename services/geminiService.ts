@@ -43,6 +43,19 @@ const fileToGenerativePart = async (file: Blob | File) => {
           mimeType = 'image/jpeg'; // Ultimate fallback
       }
   }
+  
+  // Robust check for PDF signature if inferred type is generic or potentially wrong
+  if (mimeType === 'application/octet-stream' || mimeType === 'binary/octet-stream' || !mimeType) {
+      try {
+          const binaryString = atob(data.substring(0, 50)); // Check first few bytes
+          if (binaryString.startsWith('%PDF')) {
+              console.log("[GeminiService] Detected PDF magic bytes. Forcing application/pdf.");
+              mimeType = 'application/pdf';
+          }
+      } catch (e) {
+          // ignore decoding errors
+      }
+  }
 
   return {
     inlineData: { data: data, mimeType: mimeType },
@@ -94,21 +107,29 @@ export const gradeAnswerSheet = async (
         imagePart = await fileToGenerativePart(studentAnswerSheet as Blob);
     }
     
-    const prompt = `You are an expert AI exam grader. Your task is to grade a student's answer for a single, specific question based on the provided answer sheet and a detailed rubric.
+    const prompt = `You are a strict and highly accurate AI exam grader. Your goal is to grade a student's handwritten or typed answer for a specific question with extreme precision, adhering strictly to the provided rubric.
 
-    **Grading Rubric for the Question:**
+    **Question Details:**
+    - **Question:** "${rubricItem.question}"
+    - **Total Marks:** ${rubricItem.totalMarks}
+    ${rubricItem.finalAnswer ? `- **Expected Model Answer:** "${rubricItem.finalAnswer}"` : ''}
+
+    **Detailed Grading Rubric:**
     ${rubricItemToText(rubricItem)}
 
-    **Student's Answer Sheet is attached.** Please analyze the document to find and evaluate the student's answer corresponding to the question: "${rubricItem.question}".
+    **Instructions for High Accuracy:**
+    1.  **Locate Answer:** Scan the provided document to find the student's response to THIS specific question. Ignore other questions. If the answer is missing, award 0.
+    2.  **Step-by-Step Verification:** Compare the student's work against the "Step-wise Marking" criteria.
+        - Award full marks for a step ONLY if it is clearly present and correct.
+        - Award partial marks ONLY if the step is attempted but contains minor errors (e.g., sign error).
+        - Award 0 marks for a step if it is missing or fundamentally incorrect.
+    3.  **Keyword Matching:** Check for the presence of "Keyword-based Marking" terms.
+        - The keyword must be used in the **correct context**. Mere mention without understanding does not count.
+    4.  **Final Answer Check:** Does the student's final conclusion/value match the Expected Model Answer?
+    5.  **Calculate Score:** Sum the marks from Steps and Keywords. **The total cannot exceed ${rubricItem.totalMarks}.**
+    6.  **Provide Rationale:** In the feedback, you must justify every mark deducted. Be specific (e.g., "Step 2: Formula is correct, but substitution is wrong. Deducted 1 mark.").
 
-    **Your Task:**
-    1.  **Evaluate Steps:** Check if the student followed the steps defined in the rubric. Assign marks for each step present. Report both awarded marks and maximum possible marks for each step.
-    2.  **Check Keywords:** Check if the student used the required keywords. Assign marks for keywords present. Report awarded marks and max marks for each keyword.
-    3.  **Sum Marks:** Sum up the marks awarded. The final marks should not exceed the total marks for the question.
-    4.  **Feedback (CRITICAL):** Provide a detailed explanation. Explicitly state **WHERE marks were given** (e.g., "Awarded 2/2 marks for formula") and **WHERE marks were cut** (e.g., "Deducted 1 mark for calculation error in step 2").
-    5.  **Suggestions:** Based on their answer, suggest 1-2 specific topics or concepts for the student to review for improvement.
-
-    Provide your response in the specified JSON format.
+    **Output:** Provide the result in the specified JSON format.
     `;
     
     const responseSchema = {
@@ -183,6 +204,12 @@ export const gradeAnswerSheet = async (
     // Validate the result shape
     if(typeof result.marksAwarded !== 'number' || typeof result.feedback !== 'string' || !Array.isArray(result.improvementSuggestions)) {
         throw new Error("AI response did not match the expected format.");
+    }
+
+    // SANITIZATION: Ensure awarded marks do not exceed total marks
+    if (result.marksAwarded > rubricItem.totalMarks) {
+        console.warn(`[GeminiService] AI awarded ${result.marksAwarded} which exceeds total ${rubricItem.totalMarks}. Capping to max.`);
+        result.marksAwarded = rubricItem.totalMarks;
     }
     
     return {

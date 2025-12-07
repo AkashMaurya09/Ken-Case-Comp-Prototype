@@ -3,6 +3,7 @@ import React, { createContext, useState, useContext, ReactNode, FC, useEffect } 
 import { QuestionPaper, StudentSubmission } from '../types';
 import { useToast } from './ToastContext';
 import { LocalDB } from '../services/indexedDBService';
+import { seedDatabase } from '../services/seeder';
 
 interface AppContextType {
   questionPapers: QuestionPaper[];
@@ -13,6 +14,7 @@ interface AppContextType {
   addStudentSubmission: (submission: StudentSubmission) => Promise<void>;
   updateSubmission: (updatedSubmission: StudentSubmission) => Promise<void>;
   isLoading: boolean;
+  refreshData: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -81,7 +83,15 @@ export const AppProvider: FC<{ children: ReactNode }> = ({ children }) => {
 
   const refreshData = async () => {
       try {
-          const papers = await LocalDB.getAllQuestionPapers();
+          let papers = await LocalDB.getAllQuestionPapers();
+          
+          // Auto-seed if database is completely empty
+          if (papers.length === 0) {
+              console.log("[AppContext] Database empty. Auto-seeding mock data...");
+              await seedDatabase();
+              papers = await LocalDB.getAllQuestionPapers();
+          }
+
           setQuestionPapers(papers);
           const submissions = await LocalDB.getAllSubmissions();
           setStudentSubmissions(submissions);
@@ -199,7 +209,7 @@ export const AppProvider: FC<{ children: ReactNode }> = ({ children }) => {
   };
 
   return (
-    <AppContext.Provider value={{ questionPapers, studentSubmissions, addQuestionPaper, updateQuestionPaper, deleteQuestionPaper, addStudentSubmission, updateSubmission, isLoading }}>
+    <AppContext.Provider value={{ questionPapers, studentSubmissions, addQuestionPaper, updateQuestionPaper, deleteQuestionPaper, addStudentSubmission, updateSubmission, isLoading, refreshData }}>
       {children}
     </AppContext.Provider>
   );

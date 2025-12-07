@@ -5,12 +5,142 @@ import { useAppContext } from '../../context/AppContext';
 import { gradeAnswerSheet } from '../../services/geminiService';
 import { useToast } from '../../context/ToastContext';
 import { Spinner } from '../../components/Spinner';
+import { triggerConfetti } from '../../utils/confetti';
 
 interface ResultsPageProps {
     submission: StudentSubmission;
     questionPaper: QuestionPaper;
     onDispute: (questionId: string, reason: string) => void;
 }
+
+interface DisputeModalProps {
+    result: GradedResult;
+    questionText: string;
+    onClose: () => void;
+    onSubmit: (reason: string) => void;
+}
+
+const DisputeModal: React.FC<DisputeModalProps> = ({ result, questionText, onClose, onSubmit }) => {
+    const [comment, setComment] = useState('');
+    const [selectedSteps, setSelectedSteps] = useState<number[]>([]);
+    const [selectedKeywords, setSelectedKeywords] = useState<number[]>([]);
+
+    const toggleStep = (idx: number) => {
+        setSelectedSteps(prev => prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]);
+    };
+
+    const toggleKeyword = (idx: number) => {
+        setSelectedKeywords(prev => prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]);
+    };
+
+    const handleSubmit = () => {
+        if (!comment.trim() && selectedSteps.length === 0 && selectedKeywords.length === 0) {
+            alert("Please provide a reason or select specific items to dispute.");
+            return;
+        }
+
+        let constructedReason = comment.trim();
+        const disputedParts = [];
+        
+        if (selectedSteps.length > 0) {
+            const stepsText = selectedSteps.map(i => `"${result.stepAnalysis?.[i].stepDescription}"`).join(', ');
+            disputedParts.push(`Steps: ${stepsText}`);
+        }
+        
+        if (selectedKeywords.length > 0) {
+            const kwText = selectedKeywords.map(i => `"${result.keywordAnalysis?.[i].keyword}"`).join(', ');
+            disputedParts.push(`Keywords: ${kwText}`);
+        }
+
+        if (disputedParts.length > 0) {
+            constructedReason += `\n\n--- Specific Items Disputed ---\n${disputedParts.join('\n')}`;
+        }
+
+        onSubmit(constructedReason);
+    };
+
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm p-4" onClick={onClose}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-dropdown" onClick={e => e.stopPropagation()}>
+                <div className="bg-red-50 p-4 border-b border-red-100 flex justify-between items-center">
+                    <h3 className="text-lg font-bold text-red-800 flex items-center gap-2">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                        Raise a Dispute
+                    </h3>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600">&times;</button>
+                </div>
+                
+                <div className="p-6 overflow-y-auto max-h-[70vh]">
+                    <p className="text-sm text-gray-600 mb-4 font-medium">{questionText}</p>
+                    
+                    <div className="space-y-4">
+                        {/* Steps Selection */}
+                        {result.stepAnalysis && result.stepAnalysis.length > 0 && (
+                            <div>
+                                <p className="text-xs font-bold text-gray-500 uppercase mb-2">Select Disputed Steps (Optional)</p>
+                                <div className="space-y-2 border rounded-lg p-2 bg-gray-50">
+                                    {result.stepAnalysis.map((step, idx) => (
+                                        <label key={idx} className="flex items-start gap-2 cursor-pointer p-1 hover:bg-gray-100 rounded">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={selectedSteps.includes(idx)}
+                                                onChange={() => toggleStep(idx)}
+                                                className="mt-1 rounded text-red-600 focus:ring-red-500 bg-white"
+                                            />
+                                            <span className="text-sm text-gray-700">{step.stepDescription} ({step.marksAwarded}/{step.maxMarks})</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Keywords Selection */}
+                        {result.keywordAnalysis && result.keywordAnalysis.length > 0 && (
+                            <div>
+                                <p className="text-xs font-bold text-gray-500 uppercase mb-2">Select Disputed Keywords (Optional)</p>
+                                <div className="flex flex-wrap gap-2 border rounded-lg p-2 bg-gray-50">
+                                    {result.keywordAnalysis.map((kw, idx) => (
+                                        <label key={idx} className={`flex items-center gap-2 cursor-pointer px-2 py-1 rounded border text-xs ${selectedKeywords.includes(idx) ? 'bg-red-100 border-red-300 text-red-800' : 'bg-white border-gray-200 text-gray-700'}`}>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={selectedKeywords.includes(idx)}
+                                                onChange={() => toggleKeyword(idx)}
+                                                className="rounded text-red-600 focus:ring-red-500 bg-white"
+                                            />
+                                            <span>{kw.keyword}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Comment */}
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Reason for Dispute <span className="text-red-500">*</span></label>
+                            <textarea 
+                                value={comment}
+                                onChange={e => setComment(e.target.value)}
+                                className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 outline-none bg-white text-gray-900"
+                                rows={4}
+                                placeholder="Explain why you believe the grading is incorrect..."
+                            ></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-gray-50 p-4 border-t border-gray-100 flex justify-end gap-3">
+                    <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800">Cancel</button>
+                    <button 
+                        onClick={handleSubmit}
+                        className="px-4 py-2 text-sm font-bold text-white bg-red-600 rounded-lg hover:bg-red-700 shadow-sm"
+                    >
+                        Submit Dispute
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPaper }) => {
     const { updateSubmission } = useAppContext();
@@ -24,19 +154,32 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
 
     // Modal State
     const [showAnswerSheet, setShowAnswerSheet] = useState(false);
+    const [disputeModalData, setDisputeModalData] = useState<{ questionId: string; result: GradedResult; questionText: string } | null>(null);
 
     const handleDisputeClick = (questionId: string) => {
-        const reason = prompt("Please provide a brief reason for your dispute:");
-        if (reason && reason.trim()) {
-            if (submission.gradedResults) {
-                const updatedResults = submission.gradedResults.map(r =>
-                    r.questionId === questionId ? { ...r, disputed: true, disputeReason: reason.trim() } : r
-                );
-                updateSubmission({ ...submission, gradedResults: updatedResults });
-            }
-        } else if (reason !== null) {
-            alert("A reason is required to raise a dispute.");
+        const result = submission.gradedResults?.find(r => r.questionId === questionId);
+        const question = questionPaper.rubric.find(q => q.id === questionId);
+        
+        if (result && question) {
+            setDisputeModalData({
+                questionId,
+                result,
+                questionText: question.question
+            });
         }
+    };
+
+    const handleDisputeSubmit = (reason: string) => {
+        if (!disputeModalData) return;
+        
+        if (submission.gradedResults) {
+            const updatedResults = submission.gradedResults.map(r =>
+                r.questionId === disputeModalData.questionId ? { ...r, disputed: true, disputeReason: reason } : r
+            );
+            updateSubmission({ ...submission, gradedResults: updatedResults });
+            toast.success("Dispute submitted successfully.");
+        }
+        setDisputeModalData(null);
     };
 
     // Allows the student to trigger AI grading instantly (Demo/Practice Mode)
@@ -88,6 +231,7 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
              });
              console.log(`[StudentPortal] Submission updated successfully.`);
              toast.success("Grading complete! View your detailed results below.");
+             triggerConfetti();
 
         } catch (error: any) {
             console.error("[StudentPortal] Instant grading failed:", error);
@@ -215,17 +359,46 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
         <div className="bg-white p-6 rounded-lg shadow-md relative">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                 <h3 className="text-2xl font-bold text-gray-800">Grading Results: <span className="text-blue-600">{questionPaper.title}</span></h3>
-                <button 
-                    onClick={() => setShowAnswerSheet(true)}
-                    className="flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm shadow-sm hover:shadow"
-                >
-                    <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                    View Answer Sheet
-                </button>
+                <div className="flex items-center gap-2">
+                    <button 
+                        onClick={() => {
+                            if (window.confirm("Regrade this submission? This will overwrite the current results.")) {
+                                handleInstantGrade();
+                            }
+                        }}
+                        className="flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-100 transition-colors font-medium text-sm shadow-sm"
+                    >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Regrade
+                    </button>
+                    <button 
+                        onClick={() => setShowAnswerSheet(true)}
+                        className="flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm shadow-sm hover:shadow"
+                    >
+                        <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                        View Answer Sheet
+                    </button>
+                </div>
             </div>
+            
+            {/* If currently regarding, show overlay/spinner in place of results or on top */}
+            {isGrading && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white p-8 rounded-xl shadow-2xl flex flex-col items-center max-w-sm w-full mx-4">
+                        <Spinner size="lg" />
+                        <p className="mt-4 text-lg font-bold text-gray-800">Regrading...</p>
+                        <p className="text-sm text-gray-500 mt-2 text-center">{gradingStatus}</p>
+                        <div className="w-full bg-gray-200 rounded-full h-2 mt-4 overflow-hidden">
+                            <div className="bg-blue-600 h-2 rounded-full transition-all duration-300" style={{ width: `${gradingProgress}%` }}></div>
+                        </div>
+                    </div>
+                </div>
+            )}
             
             <div className="my-6 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100 flex items-center justify-between">
                 <div>
@@ -296,24 +469,23 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
                                                                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                                                             )}
                                                         </div>
-                                                        <div className="min-w-0">
-                                                            <p className={`text-sm font-medium ${step.status === 'Missing' ? 'text-gray-500 line-through decoration-red-300' : 'text-gray-800'}`}>
-                                                                {step.stepDescription}
-                                                            </p>
-                                                            {step.status !== 'Correct' && (
-                                                                <p className="text-xs text-red-500 mt-1 font-medium">
-                                                                    {step.status === 'Missing' ? 'Step Missing' : 'Partially Correct'}
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <span className={`text-xs font-bold px-2 py-0.5 rounded flex-shrink-0 whitespace-nowrap ${
+                                                                    step.status === 'Correct' ? 'bg-green-200 text-green-800' : 
+                                                                    step.status === 'Partial' ? 'bg-yellow-200 text-yellow-800' : 
+                                                                    'bg-red-200 text-red-800'
+                                                                }`}>
+                                                                    {step.marksAwarded} / {step.maxMarks}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className={`text-sm ${step.status === 'Missing' ? 'text-gray-500 line-through decoration-red-300' : 'text-gray-800'}`}>
+                                                                    {step.stepDescription}
                                                                 </p>
-                                                            )}
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                    <span className={`text-xs font-bold px-2 py-1 rounded flex-shrink-0 whitespace-nowrap ${
-                                                        step.status === 'Correct' ? 'bg-green-200 text-green-800' : 
-                                                        step.status === 'Partial' ? 'bg-yellow-200 text-yellow-800' : 
-                                                        'bg-red-200 text-red-800'
-                                                    }`}>
-                                                        {step.marksAwarded} {step.maxMarks ? `/ ${step.maxMarks}` : ''}
-                                                    </span>
                                                 </div>
                                             ))}
                                         </div>
@@ -379,6 +551,11 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
                                     <span className="inline-flex items-center gap-2 text-sm font-medium text-yellow-700 bg-yellow-100 px-3 py-1.5 rounded-md">
                                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                                         Dispute Sent for Review
+                                    </span>
+                                ) : result.resolutionComment ? (
+                                    <span className="inline-flex items-center gap-2 text-sm font-medium text-green-700 bg-green-100 px-3 py-1.5 rounded-md">
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                        Dispute Resolved
                                     </span>
                                 ) : (
                                     <button 
@@ -448,6 +625,16 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Dispute Modal */}
+            {disputeModalData && (
+                <DisputeModal
+                    result={disputeModalData.result}
+                    questionText={disputeModalData.questionText}
+                    onClose={() => setDisputeModalData(null)}
+                    onSubmit={handleDisputeSubmit}
+                />
             )}
         </div>
     );
