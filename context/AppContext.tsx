@@ -132,7 +132,8 @@ export const AppProvider: FC<{ children: ReactNode }> = ({ children }) => {
                 blobToStore = await compressImage(updatedPaper.modelAnswerFile);
             } else {
                 console.log(`[AppContext] updateQuestionPaper: Existing Blob detected. Preserving.`);
-                blobToStore = updatedPaper.modelAnswerFile;
+                // We cast here because if it's not a File, it must be a Blob from previous state
+                blobToStore = updatedPaper.modelAnswerFile as unknown as Blob;
             }
         }
 
@@ -170,6 +171,7 @@ export const AppProvider: FC<{ children: ReactNode }> = ({ children }) => {
         }
 
         console.log(`[AppContext] addStudentSubmission: Saving to LocalDB...`);
+        // saveSubmission will handle the uploadMethod field since it's part of the submission object
         await LocalDB.saveSubmission(submission, blobToStore);
         
         await refreshData();

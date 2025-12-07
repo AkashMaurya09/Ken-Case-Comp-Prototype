@@ -42,6 +42,7 @@ export interface StudentSubmission {
   submissionDate: Date;
   gradedResults?: GradedResult[];
   isGrading: boolean;
+  uploadMethod?: 'Individual Upload' | 'Bulk Import';
 }
 
 export interface GradedResult {

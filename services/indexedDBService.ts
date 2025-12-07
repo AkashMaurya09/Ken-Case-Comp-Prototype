@@ -38,6 +38,7 @@ interface StoredPaper {
     rubric: RubricItem[];
     createdAt: Date;
     modelAnswerBlob?: Blob; // Store binary
+    fileType?: string;
 }
 
 interface StoredSubmission {
@@ -46,8 +47,10 @@ interface StoredSubmission {
     studentName: string;
     submissionDate: Date;
     fileBlob?: Blob; // Store binary
+    fileType?: string;
     gradedResults?: GradedResult[];
     isGrading: boolean;
+    uploadMethod?: 'Individual Upload' | 'Bulk Import';
 }
 
 export const LocalDB = {
@@ -62,7 +65,8 @@ export const LocalDB = {
                 title: paper.title,
                 rubric: paper.rubric,
                 createdAt: paper.createdAt || new Date(),
-                modelAnswerBlob: fileBlob // Save the blob!
+                modelAnswerBlob: fileBlob, // Save the blob!
+                fileType: paper.modelAnswerFile?.type
             };
 
             const request = store.put(storedData);
@@ -91,16 +95,21 @@ export const LocalDB = {
                         previewUrl = 'https://placehold.co/600x800/e2e8f0/1e293b?text=No+Image';
                     }
 
+                    // Reconstruct File object if blob exists and type is known
+                    let modelAnswerFile: File | undefined;
+                    if (p.modelAnswerBlob && p.fileType) {
+                        modelAnswerFile = new File([p.modelAnswerBlob], "model-answer", { type: p.fileType });
+                    } else if (p.modelAnswerBlob) {
+                         modelAnswerFile = p.modelAnswerBlob as File;
+                    }
+
                     return {
                         id: p.id,
                         title: p.title,
                         rubric: p.rubric,
                         createdAt: p.createdAt,
                         modelAnswerPreviewUrl: previewUrl,
-                        // We attach the blob to the file property temporarily if needed, 
-                        // or just rely on the previewUrl. 
-                        // For editing, we might need to know there's a file.
-                        modelAnswerFile: p.modelAnswerBlob as File
+                        modelAnswerFile: modelAnswerFile
                     };
                 });
                 // Sort by desc date
@@ -139,8 +148,10 @@ export const LocalDB = {
                     studentName: submission.studentName,
                     submissionDate: submission.submissionDate || new Date(),
                     fileBlob: fileBlob || existing?.fileBlob, // Use new blob or keep old
+                    fileType: submission.file?.type || existing?.fileType,
                     gradedResults: submission.gradedResults,
-                    isGrading: submission.isGrading
+                    isGrading: submission.isGrading,
+                    uploadMethod: submission.uploadMethod
                 };
 
                 const putReq = store.put(storedData);
@@ -168,15 +179,23 @@ export const LocalDB = {
                          previewUrl = 'https://placehold.co/600x800/e2e8f0/1e293b?text=External+Doc';
                     }
 
+                    let file: File | undefined;
+                    if (s.fileBlob && s.fileType) {
+                        file = new File([s.fileBlob], "submission", { type: s.fileType });
+                    } else if (s.fileBlob) {
+                        file = s.fileBlob as File;
+                    }
+
                     return {
                         id: s.id,
                         paperId: s.paperId,
                         studentName: s.studentName,
                         submissionDate: s.submissionDate,
                         previewUrl: previewUrl,
-                        file: s.fileBlob as File,
+                        file: file,
                         gradedResults: s.gradedResults,
-                        isGrading: s.isGrading
+                        isGrading: s.isGrading,
+                        uploadMethod: s.uploadMethod
                     };
                 });
                 submissions.sort((a, b) => new Date(b.submissionDate).getTime() - new Date(a.submissionDate).getTime());

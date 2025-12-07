@@ -2,8 +2,28 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { QuestionPaper, StudentSubmission } from '../../types';
+import { seedDatabase, getMockAnalyticsData } from '../../services/seeder';
+import { useToast } from '../../context/ToastContext';
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  AreaChart,
+  Area
+} from 'recharts';
 
-// Helper component for dropdowns, etc.
+// --- Helper Components ---
+
 const PaperFilterDropdown: React.FC<{
     papers: QuestionPaper[];
     selectedIds: string[];
@@ -81,7 +101,7 @@ const FilterPanel: React.FC<{
     onStatusChange: (status: SubmissionStatusFilter) => void,
     onReset: () => void,
 }> = ({ questionPapers, selectedPaperIds, onPaperIdChange, dateRange, onDateChange, statusFilter, onStatusChange, onReset }) => (
-    <div className="bg-white p-4 rounded-lg shadow-md mb-8">
+    <div className="bg-white p-4 rounded-lg shadow-md mb-8 border border-gray-100">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Paper</label>
@@ -110,7 +130,7 @@ const FilterPanel: React.FC<{
             </div>
             <button
                 onClick={onReset}
-                className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors text-sm font-medium h-[38px]"
+                className="bg-gray-100 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-200 transition-colors text-sm font-medium h-[38px]"
             >
                 Reset Filters
             </button>
@@ -118,161 +138,43 @@ const FilterPanel: React.FC<{
     </div>
 );
 
-
 const ChartCard: React.FC<{title: string; description: string; children: React.ReactNode;}> = ({title, description, children}) => (
-    <div className="bg-white p-6 rounded-lg shadow-md flex flex-col h-80">
-        <h3 className="text-xl font-semibold text-gray-700 mb-1">{title}</h3>
-        <p className="text-sm text-gray-500 mb-4">{description}</p>
-        <div className="flex-grow overflow-y-auto pr-2">
+    <div className="bg-white p-6 rounded-lg shadow-md border border-gray-100 flex flex-col h-96">
+        <div className="mb-4">
+            <h3 className="text-lg font-bold text-gray-800">{title}</h3>
+            <p className="text-xs text-gray-500">{description}</p>
+        </div>
+        <div className="flex-grow min-h-0">
             {children}
         </div>
     </div>
 );
 
-
-const QuestionPerformanceChart: React.FC<{ data: { name: string; performance: number }[] }> = ({ data }) => {
-    const getPerfColor = (p: number) => {
-        if (p >= 75) return 'bg-green-500';
-        if (p >= 50) return 'bg-yellow-500';
-        return 'bg-red-500';
-    };
-
-    return (
-        <ChartCard title="Question Performance" description="Identify which questions were the most challenging for students to guide future lesson planning.">
-            <div className="space-y-4 pt-2">
-                {data.length > 0 ? data.sort((a,b) => b.performance - a.performance).map(item => (
-                    <div key={item.name}>
-                        <div className="flex justify-between mb-1">
-                            <span className="text-base font-medium text-gray-700 truncate" title={item.name}>{item.name}</span>
-                            <span className="text-sm font-medium text-gray-500">{item.performance.toFixed(1)}%</span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2.5">
-                            <div className={`${getPerfColor(item.performance)} h-2.5 rounded-full transition-all duration-500`} style={{ width: `${item.performance}%` }}></div>
-                        </div>
-                    </div>
-                )) : <p className="text-center text-gray-500 py-8">No questions to display.</p>}
-            </div>
-        </ChartCard>
-    );
-};
-
-const PerformanceDistributionChart: React.FC<{data: {range: string, count: number}[]}> = ({ data }) => {
-    const maxCount = Math.max(...data.map(d => d.count), 1);
-    return (
-        <ChartCard title="Class Performance Distribution" description="Understand the overall performance of the class and identify if students are clustered in certain score brackets.">
-            <div className="flex flex-col h-full">
-                <div className="flex-grow flex justify-around items-end border-b border-gray-300 px-2 gap-2">
-                   {data.map((bar, index) => (
-                       <div key={index} className="flex-1 flex flex-col items-center justify-end h-full group">
-                           <div className="text-sm font-medium text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300">{bar.count}</div>
-                           <div
-                               className="w-4/5 bg-blue-400 hover:bg-blue-500 transition-all duration-300 rounded-t-md"
-                               style={{ height: `${(bar.count / maxCount) * 100}%` }}
-                               title={`${bar.count} students in ${bar.range} range`}
-                           ></div>
-                       </div>
-                   ))}
-               </div>
-               <div className="flex justify-around text-xs text-gray-500 mt-2 px-2">
-                   {data.map((bar, index) => (
-                       <div key={index} className="flex-1 text-center">{bar.range}</div>
-                   ))}
-               </div>
-                <p className="text-center text-xs text-gray-600 mt-2 flex-shrink-0">Score Range</p>
-           </div>
-       </ChartCard>
-   );
-};
-
-const PerformanceTrendChart: React.FC<{ data: { name: string; score: number }[] }> = ({ data }) => {
-    const svgWidth = 500;
-    const svgHeight = 200;
-    const padding = { top: 10, right: 10, bottom: 30, left: 25 };
-    const chartWidth = svgWidth - padding.left - padding.right;
-    const chartHeight = svgHeight - padding.top - padding.bottom;
-    
-    const getCoords = (chartData: {score: number}[]) => {
-        if (chartData.length < 2) {
-             return chartData.map(point => ({
-                x: padding.left + chartWidth / 2,
-                y: padding.top + chartHeight - (point.score / 100) * chartHeight
-            }));
-        }
-        return chartData.map((point, i) => ({
-            x: padding.left + (i / (chartData.length - 1)) * chartWidth,
-            y: padding.top + chartHeight - (point.score / 100) * chartHeight
-        }));
-    };
-
-    const coords = getCoords(data);
-    const pathData = coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x} ${c.y}`).join(' ');
-    
-    return (
-        <ChartCard title="Average Score by Paper" description="See if class performance is improving or declining over time from one assignment to the next.">
-            {data.length > 0 ? (
-                <div className="relative h-full w-full">
-                    <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full h-full" preserveAspectRatio="xMidYMid meet">
-                        {[100, 75, 50, 25, 0].map(val => (
-                             <g key={val}>
-                                <line x1={padding.left} x2={svgWidth - padding.right} y1={padding.top + chartHeight - (val / 100) * chartHeight} y2={padding.top + chartHeight - (val / 100) * chartHeight} stroke={val === 0 ? "#9ca3af" : "#e5e7eb"} strokeWidth="1" />
-                                 <text x="5" y={padding.top + chartHeight - (val / 100) * chartHeight + 3} className="text-[10px] fill-current text-gray-500">{val}%</text>
-                             </g>
-                        ))}
-                        {data.map((d, i) => (
-                            <text key={d.name} x={coords[i].x} y={svgHeight - 5} textAnchor="middle" className="text-[10px] fill-current text-gray-500 truncate">{d.name}</text>
-                        ))}
-                        <path d={pathData} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                        {coords.map((c, i) => (
-                             <g key={i} className="group cursor-pointer">
-                                <circle cx={c.x} cy={c.y} r="8" fill="#3b82f6" fillOpacity="0" />
-                                <circle cx={c.x} cy={c.y} r="4" fill="white" stroke="#3b82f6" strokeWidth="2" className="transition-transform duration-200 group-hover:scale-125" />
-                                <text x={c.x} y={c.y - 12} textAnchor="middle" className="text-xs font-bold fill-current text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity duration-200">{data[i].score.toFixed(1)}%</text>
-                            </g>
-                        ))}
-                    </svg>
-                </div>
-            ) : <p className="text-center text-gray-500 py-8">Not enough data for trend analysis.</p>}
-        </ChartCard>
-    );
-};
-
-const DisputedQuestionsChart: React.FC<{ data: { name: string; disputes: number }[] }> = ({ data }) => {
-    const maxDisputes = Math.max(...data.map(d => d.disputes), 1);
-    return (
-        <ChartCard title="Frequently Disputed Questions" description="Highlights questions that students most often dispute, which may indicate ambiguity or rubric issues.">
-            <div className="space-y-3 pt-2">
-                {data.length > 0 ? data.sort((a,b) => b.disputes - a.disputes).map(item => (
-                    <div key={item.name}>
-                        <div className="flex justify-between items-center text-sm">
-                            <p className="font-medium text-gray-700 truncate" title={item.name}>{item.name}</p>
-                            <p className="font-semibold text-gray-600">{item.disputes} dispute{item.disputes !== 1 ? 's' : ''}</p>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
-                            <div
-                                className="bg-yellow-500 h-2 rounded-full transition-all duration-500"
-                                style={{ width: `${(item.disputes / maxDisputes) * 100}%` }}
-                            ></div>
-                        </div>
-                    </div>
-                )) : <p className="text-center text-gray-500 py-8">No disputed questions in this selection.</p>}
-            </div>
-        </ChartCard>
-    );
-};
+// --- Analytics View ---
 
 export const Analytics: React.FC = () => {
-    const { questionPapers, studentSubmissions } = useAppContext();
+    const { questionPapers: realPapers, studentSubmissions: realSubmissions } = useAppContext();
     const [selectedPaperIds, setSelectedPaperIds] = useState<string[]>([]);
     const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
     const [statusFilter, setStatusFilter] = useState<SubmissionStatusFilter>('all');
 
+    // Auto-generate mock data locally if real data is empty
+    const mockData = useMemo(() => {
+        if (realSubmissions.length === 0) {
+            return getMockAnalyticsData();
+        }
+        return null;
+    }, [realSubmissions.length]);
+
+    const usingMockData = !!mockData;
+    const questionPapers = usingMockData ? mockData!.questionPapers : realPapers;
+    const studentSubmissions = usingMockData ? mockData!.studentSubmissions : realSubmissions;
+
     const filteredSubmissions = useMemo(() => {
         return studentSubmissions.filter(sub => {
-            // Paper Check
             const paperMatch = selectedPaperIds.length === 0 || selectedPaperIds.includes(sub.paperId);
             
-            // Date Check
-            const submissionDate = sub.submissionDate;
+            const submissionDate = new Date(sub.submissionDate);
             const startDate = dateRange.start ? new Date(dateRange.start) : null;
             const endDate = dateRange.end ? new Date(dateRange.end) : null;
             
@@ -281,32 +183,19 @@ export const Analytics: React.FC = () => {
             
             const dateMatch = (!startDate || submissionDate >= startDate) && (!endDate || submissionDate <= endDate);
 
-            // Status Check
             let statusMatch = true;
-            if (statusFilter === 'graded') {
-                statusMatch = !!sub.gradedResults;
-            } else if (statusFilter === 'pending') {
-                statusMatch = !sub.gradedResults;
-            } else if (statusFilter === 'disputed') {
-                statusMatch = sub.gradedResults?.some(r => r.disputed) || false;
-            }
+            if (statusFilter === 'graded') statusMatch = !!sub.gradedResults;
+            else if (statusFilter === 'pending') statusMatch = !sub.gradedResults;
+            else if (statusFilter === 'disputed') statusMatch = sub.gradedResults?.some(r => r.disputed) || false;
 
             return paperMatch && dateMatch && statusMatch;
         });
     }, [studentSubmissions, selectedPaperIds, dateRange, statusFilter]);
 
-    const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setDateRange(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    };
-
-    const resetFilters = () => {
-        setSelectedPaperIds([]);
-        setDateRange({ start: '', end: '' });
-        setStatusFilter('all');
-    };
+    // --- Data Preparation for Recharts ---
 
     const questionPerformanceData = useMemo(() => {
-        const stats: { [key: string]: { total: number; count: number; text: string } } = {};
+        const stats: { [key: string]: { total: number; count: number; name: string } } = {};
         
         filteredSubmissions.forEach(sub => {
             const paper = questionPapers.find(p => p.id === sub.paperId);
@@ -314,115 +203,222 @@ export const Analytics: React.FC = () => {
                 const question = paper?.rubric.find(r => r.id === res.questionId);
                 if (question) {
                     const perf = (res.marksAwarded / question.totalMarks) * 100;
-                    if (!stats[question.id]) {
-                        stats[question.id] = { total: 0, count: 0, text: question.question };
+                    // Use a unique key for the question (paper title + Q index) to avoid collisions
+                    const qIndex = paper?.rubric.findIndex(r => r.id === res.questionId) ?? 0;
+                    const uniqueKey = `${paper?.title.substring(0, 10)}... Q${qIndex + 1}`;
+                    
+                    if (!stats[uniqueKey]) {
+                        stats[uniqueKey] = { total: 0, count: 0, name: uniqueKey };
                     }
-                    stats[question.id].total += perf;
-                    stats[question.id].count += 1;
+                    stats[uniqueKey].total += perf;
+                    stats[uniqueKey].count += 1;
                 }
             });
         });
         
-        return Object.entries(stats).map(([_, value]) => ({
-            name: value.text,
-            performance: value.total / value.count
-        }));
+        return Object.values(stats)
+            .map(s => ({ name: s.name, score: Math.round(s.total / s.count) }))
+            .sort((a, b) => a.score - b.score) // Sort by performance (lowest first)
+            .slice(0, 10); // Top 10 hardest
     }, [filteredSubmissions, questionPapers]);
 
-    const performanceDistributionData = useMemo(() => {
-        const bins = { '0-20%': 0, '21-40%': 0, '41-60%': 0, '61-80%': 0, '81-100%': 0 };
+    const distributionData = useMemo(() => {
+        const bins = [
+            { name: '0-20%', count: 0 },
+            { name: '21-40%', count: 0 },
+            { name: '41-60%', count: 0 },
+            { name: '61-80%', count: 0 },
+            { name: '81-100%', count: 0 }
+        ];
+
         filteredSubmissions.forEach(sub => {
+            if (!sub.gradedResults) return;
             const paper = questionPapers.find(p => p.id === sub.paperId);
             if (!paper) return;
 
-            const totalAwarded = sub.gradedResults?.reduce((sum, r) => sum + r.marksAwarded, 0) || 0;
+            const totalAwarded = sub.gradedResults.reduce((sum, r) => sum + r.marksAwarded, 0);
             const totalPossible = paper.rubric.reduce((sum, r) => sum + r.totalMarks, 0);
             const score = totalPossible > 0 ? (totalAwarded / totalPossible) * 100 : 0;
 
-            if (score <= 20) bins['0-20%']++;
-            else if (score <= 40) bins['21-40%']++;
-            else if (score <= 60) bins['41-60%']++;
-            else if (score <= 80) bins['61-80%']++;
-            else bins['81-100%']++;
+            if (score <= 20) bins[0].count++;
+            else if (score <= 40) bins[1].count++;
+            else if (score <= 60) bins[2].count++;
+            else if (score <= 80) bins[3].count++;
+            else bins[4].count++;
         });
-        return Object.entries(bins).map(([range, count]) => ({ range, count }));
+        return bins;
     }, [filteredSubmissions, questionPapers]);
 
-    const performanceTrendData = useMemo(() => {
-        const paperStats: { [key: string]: { total: number; count: number; name: string } } = {};
+    const trendData = useMemo(() => {
+        // Group by paper or date? Let's group by paper for clarity
+        const paperStats: { [key: string]: { total: number; count: number; date: Date } } = {};
+        
         filteredSubmissions.forEach(sub => {
+            if (!sub.gradedResults) return;
             const paper = questionPapers.find(p => p.id === sub.paperId);
             if (!paper) return;
-            const totalAwarded = sub.gradedResults?.reduce((sum, r) => sum + r.marksAwarded, 0) || 0;
+
+            const totalAwarded = sub.gradedResults.reduce((sum, r) => sum + r.marksAwarded, 0);
             const totalPossible = paper.rubric.reduce((sum, r) => sum + r.totalMarks, 0);
             const score = totalPossible > 0 ? (totalAwarded / totalPossible) * 100 : 0;
-            
-            if(!paperStats[paper.id]) {
-                paperStats[paper.id] = {total: 0, count: 0, name: paper.title };
+
+            if (!paperStats[paper.title]) {
+                paperStats[paper.title] = { total: 0, count: 0, date: paper.createdAt };
             }
-            paperStats[paper.id].total += score;
-            paperStats[paper.id].count++;
+            paperStats[paper.title].total += score;
+            paperStats[paper.title].count++;
         });
-        return Object.values(paperStats).map(p => ({name: p.name, score: p.total / p.count}));
+
+        return Object.entries(paperStats)
+            .map(([name, stat]) => ({
+                name,
+                score: Math.round(stat.total / stat.count),
+                date: stat.date
+            }))
+            .sort((a, b) => a.date.getTime() - b.date.getTime());
     }, [filteredSubmissions, questionPapers]);
 
-    const disputedQuestionsData = useMemo(() => {
-        const disputeCounts: { [key: string]: { count: number; text: string } } = {};
-        
+    const disputeData = useMemo(() => {
+        let totalQuestions = 0;
+        let disputedQuestions = 0;
+
         filteredSubmissions.forEach(sub => {
-            const paper = questionPapers.find(p => p.id === sub.paperId);
             sub.gradedResults?.forEach(res => {
-                if (res.disputed) {
-                    const question = paper?.rubric.find(r => r.id === res.questionId);
-                    if (question) {
-                        if (!disputeCounts[question.id]) {
-                            disputeCounts[question.id] = { count: 0, text: question.question };
-                        }
-                        disputeCounts[question.id].count++;
-                    }
-                }
+                totalQuestions++;
+                if (res.disputed) disputedQuestions++;
             });
         });
 
-        return Object.values(disputeCounts).map(value => ({
-            name: value.text,
-            disputes: value.count
-        }));
-    }, [filteredSubmissions, questionPapers]);
+        const noDispute = totalQuestions - disputedQuestions;
+        // Avoid showing empty chart if no data
+        if (totalQuestions === 0) return [];
 
+        return [
+            { name: 'Resolved / No Dispute', value: noDispute },
+            { name: 'Disputed', value: disputedQuestions }
+        ];
+    }, [filteredSubmissions]);
+
+    // Colors
+    const COLORS = ['#00C49F', '#FF8042'];
 
     return (
         <div>
             <h2 className="text-3xl font-bold text-gray-800">Performance Analytics</h2>
-            <p className="mt-2 text-gray-600">Gain data-driven insights from student performance to enhance your teaching strategies.</p>
+            <p className="mt-2 text-gray-600">Visualize class performance trends and identify areas for improvement.</p>
             
+            {usingMockData && (
+                <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg mt-4 flex items-center gap-2 text-sm">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <strong>Preview Mode:</strong> Showing sample data because you haven't graded any papers yet.
+                </div>
+            )}
+
             <div className="mt-6">
                 <FilterPanel
                     questionPapers={questionPapers}
                     selectedPaperIds={selectedPaperIds}
                     onPaperIdChange={setSelectedPaperIds}
                     dateRange={dateRange}
-                    onDateChange={handleDateChange}
+                    onDateChange={(e) => setDateRange(prev => ({ ...prev, [e.target.name]: e.target.value }))}
                     statusFilter={statusFilter}
                     onStatusChange={setStatusFilter}
-                    onReset={resetFilters}
+                    onReset={() => {
+                        setSelectedPaperIds([]);
+                        setDateRange({ start: '', end: '' });
+                        setStatusFilter('all');
+                    }}
                 />
             </div>
-            
-            {filteredSubmissions.length === 0 ? (
-                 <div className="bg-white p-8 rounded-lg shadow-md text-center mt-8">
-                     <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-16 w-16 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                     <h3 className="mt-4 text-xl font-semibold text-gray-700">No Data Available</h3>
-                     <p className="mt-2 text-gray-500">No submissions match the current filters. Try adjusting your selection.</p>
-                 </div>
-            ) : (
-                <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <QuestionPerformanceChart data={questionPerformanceData} />
-                    <PerformanceDistributionChart data={performanceDistributionData} />
-                    <PerformanceTrendChart data={performanceTrendData} />
-                    <DisputedQuestionsChart data={disputedQuestionsData} />
-                </div>
-            )}
+
+            <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+                
+                {/* 1. Class Performance Trend */}
+                <ChartCard 
+                    title="Class Average Trend" 
+                    description="Average score per paper over time. Identifies progression."
+                >
+                    <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={trendData} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                            <XAxis dataKey="name" tick={{fontSize: 12}} interval={0} />
+                            <YAxis domain={[0, 100]} />
+                            <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }} />
+                            <Line type="monotone" dataKey="score" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, fill: "#3b82f6" }} activeDot={{ r: 6 }} />
+                        </LineChart>
+                    </ResponsiveContainer>
+                </ChartCard>
+
+                {/* 2. Score Distribution */}
+                <ChartCard 
+                    title="Grade Distribution" 
+                    description="Number of students in each score range."
+                >
+                    <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={distributionData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                            <defs>
+                                <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8}/>
+                                    <stop offset="95%" stopColor="#8884d8" stopOpacity={0}/>
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                            <XAxis dataKey="name" tick={{fontSize: 12}} />
+                            <YAxis allowDecimals={false} />
+                            <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ borderRadius: '8px' }} />
+                            <Area type="monotone" dataKey="count" stroke="#8884d8" fillOpacity={1} fill="url(#colorCount)" />
+                        </AreaChart>
+                    </ResponsiveContainer>
+                </ChartCard>
+
+                {/* 3. Question Difficulty Analysis */}
+                <ChartCard 
+                    title="Question Difficulty (Lowest Scores)" 
+                    description="Questions with the lowest average scores. Focus review here."
+                >
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart layout="vertical" data={questionPerformanceData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
+                            <XAxis type="number" domain={[0, 100]} hide />
+                            <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 11}} />
+                            <Tooltip cursor={{fill: '#f9fafb'}} contentStyle={{ borderRadius: '8px' }} formatter={(value: number) => [`${value}%`, 'Avg Score']} />
+                            <Bar dataKey="score" radius={[0, 4, 4, 0]} barSize={20}>
+                                {questionPerformanceData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.score < 50 ? '#ef4444' : entry.score < 75 ? '#eab308' : '#22c55e'} />
+                                ))}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                </ChartCard>
+
+                {/* 4. Dispute Ratio */}
+                <ChartCard 
+                    title="Dispute Ratio" 
+                    description="Proportion of graded questions that were disputed by students."
+                >
+                    <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                            <Pie
+                                data={disputeData}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={60}
+                                outerRadius={80}
+                                fill="#8884d8"
+                                paddingAngle={5}
+                                dataKey="value"
+                            >
+                                {disputeData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                ))}
+                            </Pie>
+                            <Tooltip contentStyle={{ borderRadius: '8px' }} />
+                            <Legend verticalAlign="bottom" height={36} />
+                        </PieChart>
+                    </ResponsiveContainer>
+                </ChartCard>
+
+            </div>
         </div>
     );
 };

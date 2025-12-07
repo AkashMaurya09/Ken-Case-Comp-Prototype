@@ -19,34 +19,40 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ userProfile, onBack, o
     const getTeacherMockData = () => ({
         institution: "Greenwood High School",
         department: "Department of Physics & Mathematics",
-        bio: "Passionate educator with 10+ years of experience in STEM education. Leveraging AI to provide faster, more consistent feedback to students.",
+        bio: "Passionate educator with 10+ years of experience in STEM education. Dedicated to integrating technology into the classroom to provide faster, more consistent, and personalized feedback to every student.",
         badges: [
             { label: "Top Grader", color: "bg-yellow-100 text-yellow-700" },
             { label: "Early Adopter", color: "bg-blue-100 text-blue-700" },
-            { label: "Rubric Master", color: "bg-purple-100 text-purple-700" }
+            { label: "Rubric Master", color: "bg-purple-100 text-purple-700" },
+            { label: "Mentor", color: "bg-green-100 text-green-700" }
         ],
         recentActivity: [
             { id: 1, text: "Created 'Physics Mid-Term' paper", time: "2 hours ago" },
-            { id: 2, text: "Graded 15 submissions for 'Algebra Quiz'", time: "Yesterday" },
-            { id: 3, text: "Updated rubric for 'Thermodynamics'", time: "3 days ago" },
-            { id: 4, text: "Resolved 2 student disputes", time: "Last week" },
+            { id: 2, text: "Graded 18 submissions for 'Physics Mid-Term'", time: "4 hours ago" },
+            { id: 3, text: "Resolved dispute for Liam Smith", time: "Yesterday" },
+            { id: 4, text: "Updated rubric for 'Calculus I'", time: "Yesterday" },
+            { id: 5, text: "Published results for 'History Quiz'", time: "3 days ago" },
+            { id: 6, text: "Added 'Biology: Cell Structure' paper", time: "Last week" },
         ]
     });
 
     const getStudentMockData = () => ({
         institution: "Greenwood High School",
         details: "Class 12 - Section B | Roll No. 42",
-        bio: "Aspiring astrophysicist. Love solving complex problems, coding, and playing chess. Aiming for top universities.",
+        bio: "Aspiring astrophysicist with a keen interest in quantum mechanics. Captain of the Debate Team and member of the Coding Club. Aiming for Ivy League universities.",
         badges: [
             { label: "Honor Roll", color: "bg-green-100 text-green-700" },
             { label: "Perfect Attendance", color: "bg-teal-100 text-teal-700" },
-            { label: "Physics Whiz", color: "bg-indigo-100 text-indigo-700" }
+            { label: "Physics Whiz", color: "bg-indigo-100 text-indigo-700" },
+            { label: "Top Coder", color: "bg-pink-100 text-pink-700" }
         ],
         recentActivity: [
-            { id: 1, text: "Submitted 'Physics Mid-Term'", time: "1 hour ago" },
-            { id: 2, text: "Received Grade A on 'Calculus I'", time: "Yesterday" },
-            { id: 3, text: "Raised dispute on 'Lab Report 3'", time: "2 days ago" },
-            { id: 4, text: "Joined 'Advanced Mechanics' class", time: "Last week" },
+            { id: 1, text: "Submitted 'CS 101: Intro to Python'", time: "2 hours ago" },
+            { id: 2, text: "Raised dispute on 'CS 101' Question 1", time: "2 hours ago" },
+            { id: 3, text: "Received Grade A (90%) on 'World War II'", time: "Yesterday" },
+            { id: 4, text: "Viewed feedback for 'Calculus I'", time: "3 days ago" },
+            { id: 5, text: "Submitted 'Physics Mid-Term'", time: "Last week" },
+            { id: 6, text: "Joined 'Advanced Biology' group", time: "Last week" },
         ]
     });
 

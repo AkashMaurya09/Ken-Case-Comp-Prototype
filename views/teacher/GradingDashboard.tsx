@@ -13,15 +13,21 @@ interface GradingDashboardProps {
   onBack: () => void;
 }
 
-type UploadMode = 'select' | 'individual' | 'bulk';
+type UploadMode = 'hidden' | 'choose' | 'individual' | 'bulk';
 
 export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initialSubmissionId, onBack }) => {
   const { studentSubmissions, addStudentSubmission, updateSubmission } = useAppContext();
   const toast = useToast();
-  const [uploadMode, setUploadMode] = useState<UploadMode>('select');
+  const [uploadMode, setUploadMode] = useState<UploadMode>('hidden');
+  
+  // State for the focused grading view
+  const [activeSubmissionId, setActiveSubmissionId] = useState<string | null>(initialSubmissionId || null);
+  // State to trigger auto-grading upon opening the interface
+  const [autoGradeTrigger, setAutoGradeTrigger] = useState(false);
 
   const submissionsForThisPaper = useMemo(() => 
-    studentSubmissions.filter(s => s.paperId === paper.id), 
+    studentSubmissions.filter(s => s.paperId === paper.id)
+    .sort((a, b) => b.submissionDate.getTime() - a.submissionDate.getTime()), 
     [studentSubmissions, paper.id]
   );
   
@@ -35,109 +41,94 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
         previewUrl,
         submissionDate: new Date(),
         isGrading: false,
+        uploadMethod: 'Individual Upload'
     };
     addStudentSubmission(newSubmission);
     toast.success("Student submission added successfully.");
-    setUploadMode('select'); // Reset to selection screen
+    setUploadMode('hidden');
   }, [paper.id, addStudentSubmission, submissionsForThisPaper.length, toast]);
 
   const handleBulkCSVUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-      console.log(`[GradingDashboard] Bulk CSV upload started`);
       const file = event.target.files?.[0];
-      if (!file) {
-          console.warn(`[GradingDashboard] No CSV file selected`);
-          return;
-      }
+      if (!file) return;
 
       const reader = new FileReader();
       reader.onload = async (e) => {
           const text = e.target?.result as string;
           if (!text) return;
-          console.log(`[GradingDashboard] CSV read successfully. Parsing...`);
 
           const lines = text.split('\n');
           let count = 0;
-          
-          // Skip header row if present (simple check if first row contains "Name" or "Link")
           const startIndex = lines[0].toLowerCase().includes('name') ? 1 : 0;
 
           for (let i = startIndex; i < lines.length; i++) {
               const line = lines[i].trim();
               if (!line) continue;
-
-              // Assume CSV format: Student Name, Document Link
               const [name, link] = line.split(',').map(s => s.trim());
               
-              if (name && link) {
+              if (name) {
                   const newSubmission: StudentSubmission = {
                       id: `sub-bulk-${Date.now()}-${i}`,
                       paperId: paper.id,
                       studentName: name,
-                      // Since we can't directly display a Drive link as an image without proxy, 
-                      // we use a placeholder or the link if it happens to be a direct image.
-                      // For this demo, we use a placeholder that indicates it's an external file.
                       previewUrl: 'https://placehold.co/600x800/e2e8f0/1e293b?text=External+Doc', 
                       submissionDate: new Date(),
                       isGrading: false,
+                      uploadMethod: 'Bulk Import'
                   };
-                  // In a real app, we would store the `link` in a separate field.
                   await addStudentSubmission(newSubmission);
                   count++;
               }
           }
           
           if (count > 0) {
-              console.log(`[GradingDashboard] Imported ${count} submissions.`);
-              toast.success(`Successfully imported ${count} submissions from CSV.`);
-              setUploadMode('select');
+              toast.success(`Successfully imported ${count} submissions.`);
+              setUploadMode('hidden');
           } else {
-              console.warn(`[GradingDashboard] No valid entries found in CSV.`);
-              toast.error("No valid entries found in CSV. Please check the format.");
+              toast.error("No valid entries found in CSV.");
           }
       };
       reader.readAsText(file);
   };
 
   const handleGradeSubmission = async (submissionId: string) => {
-    console.log(`[GradingDashboard] handleGradeSubmission: Grading requested for ${submissionId}`);
     const submission = submissionsForThisPaper.find(s => s.id === submissionId)!;
-    updateSubmission({ 
-        ...submission,
-        isGrading: true, 
-    });
+    updateSubmission({ ...submission, isGrading: true });
 
     try {
-        if (!submission) throw new Error("Submission not found");
-
-        // In a real bulk scenario where we only have links, we might need a backend to fetch the file.
-        // For this demo, grading only works if we have a file or a valid image URL.
+        // Validation for demo mode
         if (!submission.file && submission.previewUrl.includes('placehold.co')) {
-             throw new Error("Cannot grade this bulk submission in demo mode (missing actual file). Please upload a file manually.");
+             throw new Error("Cannot grade this placeholder/bulk submission in demo mode. Please upload a real file.");
         }
 
         const gradedResults: GradedResult[] = [];
         for (const rubricItem of paper.rubric) {
-            console.log(`[GradingDashboard] Grading question: ${rubricItem.question}`);
             const result = await gradeAnswerSheet(submission.file || submission.previewUrl, rubricItem);
             gradedResults.push(result);
         }
         
-        console.log(`[GradingDashboard] Grading complete.`);
         updateSubmission({ 
             ...submission, 
             isGrading: false, 
             gradedResults 
         });
+        toast.success("Grading complete!");
 
-    } catch (error) {
-        console.error("[GradingDashboard] Grading failed:", error);
-        const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during grading.";
-        toast.error(errorMessage);
+    } catch (error: any) {
+        console.error("Grading failed:", error);
+        toast.error(error.message || "Grading failed.");
         updateSubmission({ ...submission, isGrading: false });
     }
   };
   
-  const handleGradeOverride = (submissionId: string, questionId: string, newMarks: number, comment?: string) => {
+  const handleGradeOverride = (
+      submissionId: string, 
+      questionId: string, 
+      newMarks: number, 
+      comment?: string,
+      newStepAnalysis?: GradedResult['stepAnalysis'],
+      newKeywordAnalysis?: GradedResult['keywordAnalysis']
+  ) => {
      const submission = submissionsForThisPaper.find(s => s.id === submissionId);
      if(submission) {
         const updatedResults = submission.gradedResults?.map(r =>
@@ -145,11 +136,13 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
                 ...r, 
                 marksAwarded: newMarks, 
                 disputed: false, 
-                resolutionComment: comment || r.resolutionComment 
+                resolutionComment: comment || r.resolutionComment,
+                stepAnalysis: newStepAnalysis || r.stepAnalysis,
+                keywordAnalysis: newKeywordAnalysis || r.keywordAnalysis
             } : r
         );
         updateSubmission({ ...submission, gradedResults: updatedResults });
-        toast.success("Grade updated & dispute resolved.");
+        toast.success("Grade updated.");
      }
   };
   
@@ -163,110 +156,255 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
       link.click();
       document.body.removeChild(link);
   };
-  
+
+  // Navigation Logic
+  const handleNextStudent = () => {
+      if (!activeSubmissionId) return;
+      const currentIndex = submissionsForThisPaper.findIndex(s => s.id === activeSubmissionId);
+      if (currentIndex < submissionsForThisPaper.length - 1) {
+          setActiveSubmissionId(submissionsForThisPaper[currentIndex + 1].id);
+          // If moving to next student, we typically don't auto-grade unless implemented specifically
+          // keeping it manual for now when navigating via next/prev to prevent accidental API usage
+          setAutoGradeTrigger(false); 
+      }
+  };
+
+  const handlePrevStudent = () => {
+      if (!activeSubmissionId) return;
+      const currentIndex = submissionsForThisPaper.findIndex(s => s.id === activeSubmissionId);
+      if (currentIndex > 0) {
+          setActiveSubmissionId(submissionsForThisPaper[currentIndex - 1].id);
+          setAutoGradeTrigger(false);
+      }
+  };
+
+  // --- Render: Full Screen Grading Workspace ---
+  if (activeSubmissionId) {
+      return (
+          <GradingInterface 
+              submissionId={activeSubmissionId}
+              submissionsList={submissionsForThisPaper} // Passed for context if needed, but we handle nav here
+              paper={paper}
+              onClose={() => {
+                  setActiveSubmissionId(null);
+                  setAutoGradeTrigger(false);
+              }}
+              onNext={handleNextStudent}
+              onPrev={handlePrevStudent}
+              hasNext={submissionsForThisPaper.findIndex(s => s.id === activeSubmissionId) < submissionsForThisPaper.length - 1}
+              hasPrev={submissionsForThisPaper.findIndex(s => s.id === activeSubmissionId) > 0}
+              onGradeSubmission={handleGradeSubmission}
+              onGradeOverride={handleGradeOverride}
+              autoStart={autoGradeTrigger}
+          />
+      );
+  }
+
+  // --- Render: Dashboard List View ---
   return (
     <div className="space-y-6">
-        <div>
-            <button onClick={onBack} className="text-sm text-blue-600 hover:underline mb-4">&larr; Back to all papers</button>
-            <h2 className="text-3xl font-bold text-gray-800">Grading Dashboard</h2>
-            <p className="mt-1 text-lg text-gray-600">{paper.title}</p>
+        <div className="flex justify-between items-start">
+            <div>
+                <button onClick={onBack} className="text-sm text-blue-600 hover:underline mb-2">&larr; Back to all papers</button>
+                <h2 className="text-3xl font-bold text-gray-800">Grading Dashboard</h2>
+                <p className="mt-1 text-lg text-gray-600">{paper.title}</p>
+            </div>
+            <div className="flex gap-2">
+                 <button 
+                    onClick={() => setUploadMode(uploadMode === 'hidden' ? 'choose' : 'hidden')}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-2"
+                >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                    Add Submission
+                </button>
+            </div>
         </div>
 
-        {/* Upload Selection Area */}
-        {uploadMode === 'select' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Option 1: Individual Upload */}
-                <div 
-                    onClick={() => setUploadMode('individual')}
-                    className="bg-white p-8 rounded-xl border-2 border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50 transition-all cursor-pointer group text-center flex flex-col items-center justify-center min-h-[200px]"
-                >
-                    <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                        </svg>
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-800">Individual Upload</h3>
-                    <p className="text-gray-500 mt-2">Upload a single answer sheet (Image/PDF) directly from your device.</p>
-                </div>
+        {/* Upload Mode Panels */}
+        {uploadMode !== 'hidden' && (
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 animate-slide-up relative">
+                 <button onClick={() => setUploadMode('hidden')} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">&times;</button>
+                 
+                 {uploadMode === 'choose' && (
+                     <div className="max-w-2xl mx-auto text-center">
+                         <h3 className="text-lg font-bold text-gray-800 mb-6">How would you like to add submissions?</h3>
+                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                             <div 
+                                onClick={() => setUploadMode('individual')}
+                                className="bg-white p-6 rounded-xl border-2 border-gray-200 hover:border-blue-500 hover:shadow-md cursor-pointer transition-all flex flex-col items-center gap-3 group"
+                             >
+                                 <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                                 </div>
+                                 <h4 className="font-bold text-gray-800">Single Upload</h4>
+                                 <p className="text-sm text-gray-500">Upload individual PDF or Image answer sheets one by one.</p>
+                             </div>
 
-                {/* Option 2: Bulk Import */}
-                <div 
-                    onClick={() => setUploadMode('bulk')}
-                    className="bg-white p-8 rounded-xl border-2 border-dashed border-gray-300 hover:border-green-500 hover:bg-green-50 transition-all cursor-pointer group text-center flex flex-col items-center justify-center min-h-[200px]"
-                >
-                    <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-800">Bulk Import via CSV</h3>
-                    <p className="text-gray-500 mt-2">Import multiple students using a Google Sheet/CSV containing names and drive links.</p>
-                </div>
-            </div>
-        )}
+                             <div 
+                                onClick={() => setUploadMode('bulk')}
+                                className="bg-white p-6 rounded-xl border-2 border-gray-200 hover:border-green-500 hover:shadow-md cursor-pointer transition-all flex flex-col items-center gap-3 group"
+                             >
+                                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-green-600 group-hover:bg-green-600 group-hover:text-white transition-colors">
+                                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                 </div>
+                                 <h4 className="font-bold text-gray-800">Bulk Import</h4>
+                                 <p className="text-sm text-gray-500">Import multiple submissions via a CSV file with links.</p>
+                             </div>
+                         </div>
+                     </div>
+                 )}
 
-        {/* Individual Upload UI */}
-        {uploadMode === 'individual' && (
-            <div className="bg-white p-6 rounded-lg shadow-sm relative">
-                <button 
-                    onClick={() => setUploadMode('select')}
-                    className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
-                <h3 className="text-xl font-semibold mb-4 text-gray-700">Upload Student Submission</h3>
-                <FileUpload 
-                    onFileUpload={handleStudentSubmissionUpload} 
-                    label="Upload answer sheet file (Image or PDF)" 
-                    acceptedTypes="image/*,application/pdf"
-                />
-            </div>
-        )}
+                 {uploadMode === 'individual' && (
+                     <div className="max-w-xl mx-auto relative">
+                        <button onClick={() => setUploadMode('choose')} className="text-sm text-blue-600 hover:underline mb-2 absolute left-0 -top-8 flex items-center gap-1">
+                            &larr; Back
+                        </button>
+                        <h3 className="text-lg font-bold text-gray-800 mb-4 text-center">Upload Single Submission</h3>
+                        <FileUpload onFileUpload={handleStudentSubmissionUpload} label="Upload answer sheet (Image/PDF)" acceptedTypes="image/*,application/pdf" />
+                     </div>
+                 )}
 
-        {/* Bulk Upload UI */}
-        {uploadMode === 'bulk' && (
-            <div className="bg-white p-6 rounded-lg shadow-sm relative">
-                <button 
-                    onClick={() => setUploadMode('select')}
-                    className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
-                <h3 className="text-xl font-semibold mb-2 text-gray-700">Bulk Import from CSV</h3>
-                <p className="text-sm text-gray-600 mb-6">
-                    Upload a CSV file with two columns: <strong>Student Name</strong> and <strong>Document Link</strong>.
-                    <br />
-                    <button onClick={downloadTemplate} className="text-blue-600 hover:underline text-xs font-medium mt-1">
-                        Download Template CSV
-                    </button>
-                </p>
-                
-                <div className="flex items-center justify-center w-full">
-                    <label htmlFor="dropzone-file" className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
-                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                            <svg className="w-8 h-8 mb-4 text-gray-500" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 16">
-                                <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"/>
-                            </svg>
-                            <p className="mb-2 text-sm text-gray-500"><span className="font-semibold">Click to upload CSV</span> or drag and drop</p>
-                            <p className="text-xs text-gray-500">.CSV files only</p>
-                        </div>
-                        <input id="dropzone-file" type="file" accept=".csv" className="hidden" onChange={handleBulkCSVUpload} />
-                    </label>
-                </div>
+                 {uploadMode === 'bulk' && (
+                     <div className="max-w-xl mx-auto text-center relative">
+                        <button onClick={() => setUploadMode('choose')} className="text-sm text-blue-600 hover:underline mb-2 absolute left-0 -top-8 flex items-center gap-1">
+                            &larr; Back
+                        </button>
+                        <h3 className="text-lg font-bold text-gray-800 mb-2">Bulk Import</h3>
+                         <p className="text-sm text-gray-500 mb-4">Upload a CSV with "Student Name" and "Document Link" columns. <span className="text-blue-600 cursor-pointer" onClick={downloadTemplate}>Download Template</span></p>
+                        <input type="file" accept=".csv" onChange={handleBulkCSVUpload} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                     </div>
+                 )}
             </div>
         )}
         
-        <GradingInterface 
-            submissions={submissionsForThisPaper}
-            paper={paper}
-            initialSubmissionId={initialSubmissionId}
-            onGradeSubmission={handleGradeSubmission}
-            onGradeOverride={handleGradeOverride}
-        />
+        {/* Student List Table */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                <h3 className="text-lg font-bold text-gray-800">Student Submissions ({submissionsForThisPaper.length})</h3>
+                <div className="flex gap-2">
+                     {/* Filter placeholders could go here */}
+                </div>
+            </div>
+            
+            {submissionsForThisPaper.length === 0 ? (
+                 <div className="p-12 text-center text-gray-500">
+                    <div className="bg-gray-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                    </div>
+                    <p className="text-lg font-medium">No submissions yet.</p>
+                    <p className="text-sm">Upload a submission to start grading.</p>
+                </div>
+            ) : (
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                        <thead className="bg-gray-50 text-gray-600 text-xs uppercase font-semibold">
+                            <tr>
+                                <th className="px-6 py-4">Student Name</th>
+                                <th className="px-6 py-4">Date</th>
+                                <th className="px-6 py-4">Method / ID</th>
+                                <th className="px-6 py-4">Status</th>
+                                <th className="px-6 py-4">Score</th>
+                                <th className="px-6 py-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {submissionsForThisPaper.map(sub => {
+                                const isGraded = !!sub.gradedResults;
+                                const hasDispute = sub.gradedResults?.some(r => r.disputed);
+                                const awarded = sub.gradedResults?.reduce((acc, r) => acc + r.marksAwarded, 0) || 0;
+                                const total = paper.rubric.reduce((acc, r) => acc + r.totalMarks, 0);
+                                const percentage = total > 0 ? Math.round((awarded / total) * 100) : 0;
+
+                                return (
+                                    <tr 
+                                        key={sub.id} 
+                                        className="hover:bg-gray-50 transition-colors cursor-pointer" 
+                                        onClick={() => {
+                                            setActiveSubmissionId(sub.id);
+                                            setAutoGradeTrigger(false); // Just view, don't auto-grade
+                                        }}
+                                    >
+                                        <td className="px-6 py-4 font-medium text-gray-900">
+                                            {sub.studentName}
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-gray-500">
+                                            <div>{sub.submissionDate.toLocaleDateString()}</div>
+                                            <div className="text-xs text-gray-400">{sub.submissionDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex flex-col items-start gap-1.5">
+                                                {sub.uploadMethod === 'Bulk Import' ? (
+                                                    <span className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded w-max text-xs text-gray-500 border border-gray-200">
+                                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                                                        Bulk Import
+                                                    </span>
+                                                ) : (
+                                                    <span className="flex items-center gap-1 bg-blue-50 px-2 py-1 rounded w-max text-xs text-blue-700 border border-blue-100">
+                                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                                                        Individual
+                                                    </span>
+                                                )}
+                                                <span className="text-[10px] font-mono text-gray-400 tracking-wide select-all">
+                                                    #{sub.id.split('-').slice(1,3).join('-') || sub.id.substring(0, 8)}
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {sub.isGrading ? (
+                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 animate-pulse">
+                                                    Grading...
+                                                </span>
+                                            ) : hasDispute ? (
+                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                                    Disputed
+                                                </span>
+                                            ) : isGraded ? (
+                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                    Graded
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                                    Pending
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {isGraded ? (
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`font-bold ${percentage >= 80 ? 'text-green-600' : percentage >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                                        {percentage}%
+                                                    </span>
+                                                    <span className="text-xs text-gray-400">({awarded}/{total})</span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-gray-400 text-sm">-</span>
+                                            )}
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <button 
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setActiveSubmissionId(sub.id);
+                                                    // Only auto-trigger if not already graded and not currently grading
+                                                    if (!isGraded && !sub.isGrading) {
+                                                        setAutoGradeTrigger(true);
+                                                    } else {
+                                                        setAutoGradeTrigger(false);
+                                                    }
+                                                }}
+                                                className="text-blue-600 hover:text-blue-900 font-medium text-sm hover:underline"
+                                            >
+                                                {isGraded ? 'Review / Edit' : 'Grade Now'}
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+        </div>
     </div>
   );
 };

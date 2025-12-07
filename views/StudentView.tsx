@@ -4,12 +4,13 @@ import { AllSubmissions } from './student/AllSubmissions';
 import { MyAnalytics } from './student/MyAnalytics';
 import { MyDisputes } from './student/MyDisputes';
 import { SubmitPaper } from './student/SubmitPaper';
+import { StudentDashboard } from './student/StudentDashboard';
 import { StudentSubmission, QuestionPaper } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { ResultsPage } from './student/ResultsPage';
 
 
-type StudentTab = 'submit' | 'submissions' | 'analytics' | 'disputes';
+type StudentTab = 'dashboard' | 'submit' | 'submissions' | 'analytics' | 'disputes';
 
 interface NavItemProps {
     label: string;
@@ -35,7 +36,7 @@ const NavItem: React.FC<NavItemProps> = ({ label, icon, isActive, onClick }) => 
 
 export const StudentView: React.FC = () => {
     const { questionPapers, studentSubmissions } = useAppContext();
-    const [activeTab, setActiveTab] = useState<StudentTab>('submissions');
+    const [activeTab, setActiveTab] = useState<StudentTab>('dashboard');
     // We store the ID instead of the object to ensure we always have the latest data from context
     const [viewingSubmissionId, setViewingSubmissionId] = useState<string | null>(null);
 
@@ -72,6 +73,8 @@ export const StudentView: React.FC = () => {
 
     const renderContent = () => {
         switch (activeTab) {
+            case 'dashboard':
+                return <StudentDashboard onNavigate={(tab) => setActiveTab(tab)} />;
             case 'submit':
                 return <SubmitPaper onSubmissionComplete={() => setActiveTab('submissions')} />;
             case 'submissions':
@@ -81,11 +84,16 @@ export const StudentView: React.FC = () => {
             case 'analytics':
                 return <MyAnalytics />;
             default:
-                return <AllSubmissions onViewResults={handleViewResults} />;
+                return <StudentDashboard onNavigate={(tab) => setActiveTab(tab)} />;
         }
     };
     
     const navItems: { id: StudentTab; label: string; icon: React.ReactNode }[] = [
+        {
+            id: 'dashboard',
+            label: 'Dashboard',
+            icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>,
+        },
         {
             id: 'submissions',
             label: 'My Submissions',
