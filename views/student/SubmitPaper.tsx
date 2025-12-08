@@ -49,8 +49,18 @@ export const SubmitPaper: React.FC<SubmitPaperProps> = ({ onSubmissionComplete }
         return (
              <div className="bg-white p-6 rounded-lg shadow-md max-w-2xl mx-auto">
                 <button onClick={() => setSelectedPaper(null)} className="text-sm text-blue-600 hover:underline mb-4">&larr; Back to all papers</button>
-                <h3 className="text-xl font-semibold mb-2 text-gray-700">Submit for: {selectedPaper.title}</h3>
-                <p className="text-gray-600 mb-6">Please upload a clear image or PDF of your completed answer sheet to receive your grade and feedback.</p>
+                <div className="mb-6">
+                    <h3 className="text-xl font-semibold text-gray-800">{selectedPaper.title}</h3>
+                    {selectedPaper.subject && (
+                        <p className="text-sm text-blue-600 font-medium">{selectedPaper.subject}</p>
+                    )}
+                    {selectedPaper.description && (
+                        <p className="text-sm text-gray-600 mt-2 p-3 bg-gray-50 rounded border border-gray-100">{selectedPaper.description}</p>
+                    )}
+                </div>
+                
+                <h4 className="text-lg font-medium text-gray-700 mb-2">Upload Submission</h4>
+                <p className="text-gray-600 mb-6 text-sm">Please upload a clear image or PDF of your completed answer sheet to receive your grade and feedback.</p>
                 <FileUpload 
                     onFileUpload={handleFileUpload} 
                     label="Upload your answer sheet (Image or PDF)" 
@@ -77,9 +87,17 @@ export const SubmitPaper: React.FC<SubmitPaperProps> = ({ onSubmissionComplete }
                                 <li key={paper.id}>
                                     <button 
                                         onClick={() => setSelectedPaper(paper)}
-                                        className="w-full text-left p-4 rounded-md bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-300 transition-colors"
+                                        className="w-full text-left p-4 rounded-md bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-300 transition-colors flex justify-between items-center group"
                                     >
-                                        <p className="font-semibold text-gray-800">{paper.title}</p>
+                                        <div>
+                                            <p className="font-semibold text-gray-800 group-hover:text-blue-700">{paper.title}</p>
+                                            {paper.subject && <p className="text-xs text-gray-500 mt-1">{paper.subject}</p>}
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-xs font-bold bg-white border border-gray-200 px-2 py-1 rounded text-gray-600">
+                                                {paper.rubric.length} Questions
+                                            </span>
+                                        </div>
                                     </button>
                                 </li>
                             ))}

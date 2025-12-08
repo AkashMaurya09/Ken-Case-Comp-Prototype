@@ -6,6 +6,7 @@ import { gradeAnswerSheet } from '../../services/geminiService';
 import { useToast } from '../../context/ToastContext';
 import { Spinner } from '../../components/Spinner';
 import { triggerConfetti } from '../../utils/confetti';
+import { RainbowButton } from '../../components/RainbowButton';
 
 interface ResultsPageProps {
     submission: StudentSubmission;
@@ -294,13 +295,13 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
                                 </p>
 
                                 {!isGrading ? (
-                                    <button 
+                                    <RainbowButton 
                                         onClick={handleInstantGrade}
-                                        className="w-full bg-white text-blue-700 font-bold py-4 px-6 rounded-xl hover:bg-blue-50 transition-colors shadow-lg flex items-center justify-center gap-3 transform hover:-translate-y-1 duration-200"
+                                        className="w-full"
                                     >
                                         <span>Get My Grade Now</span>
                                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
-                                    </button>
+                                    </RainbowButton>
                                 ) : (
                                     <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
                                         <div className="flex justify-between mb-2 text-sm font-medium text-blue-100">
@@ -451,20 +452,27 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
                                     
                                     {stepAnalysis && stepAnalysis.length > 0 ? (
                                         <div className="space-y-3">
-                                            {stepAnalysis.map((step, idx) => (
+                                            {stepAnalysis.map((step, idx) => {
+                                                const isECF = step.status === 'ECF';
+                                                
+                                                return (
                                                 <div key={idx} className={`p-3 rounded-lg border flex items-start justify-between gap-3 ${
                                                     step.status === 'Correct' ? 'bg-green-50 border-green-100' : 
                                                     step.status === 'Partial' ? 'bg-yellow-50 border-yellow-100' : 
+                                                    isECF ? 'bg-amber-50 border-amber-200' :
                                                     'bg-red-50 border-red-100'
                                                 }`}>
                                                     <div className="flex-1 flex items-start gap-2 min-w-0">
                                                         <div className={`mt-0.5 flex-shrink-0 ${
                                                             step.status === 'Correct' ? 'text-green-500' : 
                                                             step.status === 'Partial' ? 'text-yellow-500' : 
+                                                            isECF ? 'text-amber-500' :
                                                             'text-red-500'
                                                         }`}>
                                                             {step.status === 'Correct' ? (
                                                                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                                            ) : isECF ? (
+                                                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                                             ) : (
                                                                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                                                             )}
@@ -474,10 +482,12 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
                                                                 <span className={`text-xs font-bold px-2 py-0.5 rounded flex-shrink-0 whitespace-nowrap ${
                                                                     step.status === 'Correct' ? 'bg-green-200 text-green-800' : 
                                                                     step.status === 'Partial' ? 'bg-yellow-200 text-yellow-800' : 
+                                                                    isECF ? 'bg-amber-100 text-amber-800' :
                                                                     'bg-red-200 text-red-800'
                                                                 }`}>
                                                                     {step.marksAwarded} / {step.maxMarks}
                                                                 </span>
+                                                                {isECF && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1 rounded border border-amber-100">ECF applied</span>}
                                                             </div>
                                                             <div className="flex-1 min-w-0">
                                                                 <p className={`text-sm ${step.status === 'Missing' ? 'text-gray-500 line-through decoration-red-300' : 'text-gray-800'}`}>
@@ -487,7 +497,8 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
                                                         </div>
                                                     </div>
                                                 </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     ) : (
                                         <p className="text-sm text-gray-500 italic">No specific steps defined for this question.</p>
@@ -536,10 +547,29 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
                                         </div>
                                     )}
                                     
-                                    {result.resolutionComment && (
+                                    {/* Resolution Comment Display */}
+                                    {((result.teacherComments && result.teacherComments.length > 0) || result.resolutionComment) && (
                                         <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                                            <h5 className="text-sm font-bold text-green-800 uppercase mb-1">Teacher's Note</h5>
-                                            <p className="text-sm text-green-700">{result.resolutionComment}</p>
+                                            <h5 className="text-sm font-bold text-green-800 uppercase mb-2">Teacher's Notes</h5>
+                                            
+                                            {/* Legacy single comment fallback */}
+                                            {result.resolutionComment && (!result.teacherComments || result.teacherComments.length === 0) && (
+                                                <p className="text-sm text-green-700">{result.resolutionComment}</p>
+                                            )}
+
+                                            {/* Full history */}
+                                            {result.teacherComments && result.teacherComments.length > 0 && (
+                                                <div className="space-y-3 max-h-40 overflow-y-auto">
+                                                    {result.teacherComments.map((comment, i) => (
+                                                        <div key={i} className="bg-white/60 p-2 rounded border border-green-100">
+                                                            <p className="text-sm text-green-900 whitespace-pre-wrap">{comment.text}</p>
+                                                            <span className="text-[10px] text-green-600 block mt-1 text-right">
+                                                                {new Date(comment.timestamp).toLocaleString()}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -552,7 +582,7 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
                                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                                         Dispute Sent for Review
                                     </span>
-                                ) : result.resolutionComment ? (
+                                ) : (result.resolutionComment || (result.teacherComments && result.teacherComments.length > 0)) ? (
                                     <span className="inline-flex items-center gap-2 text-sm font-medium text-green-700 bg-green-100 px-3 py-1.5 rounded-md">
                                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                                         Dispute Resolved

@@ -26,8 +26,10 @@ export interface RubricItem {
 export interface QuestionPaper {
   id: string;
   title: string;
+  subject?: string;
+  description?: string;
   modelAnswerFile?: File; // Optional: Only present during creation
-  modelAnswerPreviewUrl: string;
+  modelAnswerPreviewUrl?: string;
   rubric: RubricItem[];
   createdAt: Date;
 }
@@ -43,6 +45,7 @@ export interface StudentSubmission {
   gradedResults?: GradedResult[];
   isGrading: boolean;
   uploadMethod?: 'Individual Upload' | 'Bulk Import';
+  gradingDuration?: number; // Duration in milliseconds
 }
 
 export interface GradedResult {
@@ -53,11 +56,15 @@ export interface GradedResult {
   disputed: boolean;
   disputeReason?: string;
   resolutionComment?: string;
+  teacherComments?: {
+      text: string;
+      timestamp: Date;
+  }[];
   stepAnalysis?: {
       stepDescription: string;
       marksAwarded: number;
       maxMarks: number;
-      status: string; // 'Correct' | 'Partial' | 'Missing'
+      status: string; // 'Correct' | 'Partial' | 'Missing' | 'ECF'
   }[];
   keywordAnalysis?: {
       keyword: string;

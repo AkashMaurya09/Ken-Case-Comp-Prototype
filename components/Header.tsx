@@ -97,7 +97,7 @@ export const Header: React.FC<HeaderProps> = ({ isLoggedIn, userProfile: propUse
                                     </svg>
                                 </div>
                                 <div className="text-left">
-                                    <p className="font-semibold text-gray-900 group-hover:text-blue-700">Teacher Portal</p>
+                                    <p className="font-semibold text-gray-900 group-hover:text-blue-700">Educator Login</p>
                                     <p className="text-xs text-gray-500 mt-0.5 leading-snug">Create papers, define rubrics & automate grading.</p>
                                 </div>
                             </button>

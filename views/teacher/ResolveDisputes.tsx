@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { RainbowButton } from '../../components/RainbowButton';
 
 interface ResolveDisputesProps {
     onReview?: (paperId: string, submissionId: string) => void;
@@ -76,12 +77,12 @@ export const ResolveDisputes: React.FC<ResolveDisputesProps> = ({ onReview }) =>
                                      </blockquote>
                                      <p className="text-sm text-gray-600 mt-3"><span className="font-semibold">Original Feedback:</span> {item.feedback}</p>
                                      <div className="mt-4 text-right">
-                                        <button 
+                                        <RainbowButton 
                                             onClick={() => onReview && onReview(item.paperId, item.submissionId)}
-                                            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm transition-colors"
+                                            className="h-9 px-4 text-sm"
                                         >
                                             Review Submission
-                                        </button>
+                                        </RainbowButton>
                                      </div>
                                 </div>
                             </div>

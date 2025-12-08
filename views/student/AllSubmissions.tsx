@@ -2,6 +2,7 @@
 import React from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { StudentSubmission, QuestionPaper } from '../../types';
+import { RainbowButton } from '../../components/RainbowButton';
 
 interface AllSubmissionsProps {
     onViewResults: (submission: StudentSubmission) => void;
@@ -111,17 +112,13 @@ export const AllSubmissions: React.FC<AllSubmissionsProps> = ({ onViewResults })
                                         </div>
                                     </div>
                                     
-                                    <button
+                                    <RainbowButton
                                         onClick={() => onViewResults(sub)}
-                                        className={`w-full py-3 px-4 font-bold text-sm transition-colors flex items-center justify-center gap-2 ${
-                                            isGraded 
-                                                ? 'bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800' 
-                                                : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                                        }`}
+                                        className="w-full h-10 text-sm"
                                     >
                                         {isGraded ? 'View Detailed Results' : 'Check Status / Grade Instantly'}
                                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-                                    </button>
+                                    </RainbowButton>
                                 </div>
                             );
                         })}

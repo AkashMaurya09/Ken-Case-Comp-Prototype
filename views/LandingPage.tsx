@@ -1,14 +1,18 @@
 
-import React, { useState, useEffect } from 'react';
-import { db } from '../services/firebase';
-import { collection, getDocs, limit, query } from 'firebase/firestore';
+import React, { useState } from 'react';
 import { Role } from '../types';
+import { RainbowButton } from '../components/RainbowButton';
+import { Marquee } from '../components/Marquee';
+import { NumberTicker } from '../components/NumberTicker';
 
-const StatItem: React.FC<{ value: string; label: string }> = ({ value, label }) => {
+const StatItem: React.FC<{ value: number; suffix?: string; label: string }> = ({ value, suffix = "", label }) => {
   return (
     <div className="text-center">
-      <p className="text-4xl md:text-5xl font-bold text-purple-600">{value}</p>
-      <p className="mt-1 text-base text-gray-600">{label}</p>
+      <div className="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-blue-500 pb-1 flex justify-center items-center">
+        <NumberTicker value={value} className="text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-blue-500" />
+        <span>{suffix}</span>
+      </div>
+      <p className="mt-2 text-sm font-semibold text-gray-500 uppercase tracking-wide">{label}</p>
     </div>
   );
 };
@@ -114,8 +118,75 @@ const testimonials = [
     name: 'Dr. Vikram Singh',
     title: 'Chemistry',
     institution: 'BITS PILANI'
+  },
+  {
+    avatar: 'https://i.pravatar.cc/150?img=12',
+    quote: "Grading massive open-ended assignments used to be a nightmare. IntelliGrade turned it into a manageable, even insightful, process.",
+    name: 'Dr. Sarah Jenkins',
+    title: 'Data Science',
+    institution: 'STANFORD UNIVERSITY'
+  },
+  {
+    avatar: 'https://i.pravatar.cc/150?img=11',
+    quote: "The consistency across hundreds of papers is unmatched. It removes the human fatigue factor entirely from grading.",
+    name: 'Prof. Michael Chen',
+    title: 'Mathematics',
+    institution: 'MIT'
+  },
+  {
+    avatar: 'https://i.pravatar.cc/150?img=9',
+    quote: "Finally, a tool that respects the nuance of subjective grading while providing the speed of automated checking.",
+    name: 'Dr. Emily Davis',
+    title: 'Literature',
+    institution: 'OXFORD UNIVERSITY'
+  },
+  {
+    avatar: 'https://i.pravatar.cc/150?img=15',
+    quote: "My TAs can now focus on mentoring students instead of spending hours on mechanical grading.",
+    name: 'Prof. David Wilson',
+    title: 'Engineering',
+    institution: 'CAMBRIDGE'
+  },
+  {
+    avatar: 'https://i.pravatar.cc/150?img=20',
+    quote: "A game changer for large classes. The analytics allow me to see exactly where the class is struggling in real-time.",
+    name: 'Dr. Lisa Ray',
+    title: 'Psychology',
+    institution: 'UNIV OF TORONTO'
   }
 ];
+
+const ReviewCard: React.FC<{
+  avatar: string;
+  name: string;
+  title: string;
+  quote: string;
+  institution: string;
+}> = ({
+  avatar,
+  name,
+  title,
+  quote,
+  institution,
+}) => {
+  return (
+    <div className="w-[350px] max-w-full relative rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-shadow mx-2 cursor-pointer">
+      <div className="flex items-center gap-3">
+        <img className="rounded-full w-10 h-10 object-cover" alt={name} src={avatar} />
+        <div className="flex flex-col">
+          <figcaption className="text-sm font-bold text-gray-900">
+            {name}
+          </figcaption>
+          <p className="text-xs font-medium text-gray-500">{title}</p>
+        </div>
+      </div>
+      <blockquote className="mt-4 text-sm text-gray-600 leading-relaxed italic">"{quote}"</blockquote>
+      <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+         <span className="text-xs font-bold text-blue-600 tracking-wide">{institution}</span>
+      </div>
+    </div>
+  );
+};
 
 const faqs = [
   { question: "Is IntelliGrade suitable for all subjects?", answer: "Yes! IntelliGrade is designed to be versatile. While it excels at STEM subjects with clear rubrics, its flexible criteria editor can be adapted for humanities, arts, and any subject requiring structured feedback." },
@@ -160,21 +231,6 @@ const SocialIcon: React.FC<{ href: string; children: React.ReactNode }> = ({ hre
 export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
   const [activeSubject, setActiveSubject] = useState('Physics');
   const [activeAssignmentType, setActiveAssignmentType] = useState('Exams');
-  const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'error'>('checking');
-
-  useEffect(() => {
-    const checkFirebase = async () => {
-        try {
-            const q = query(collection(db, 'questionPapers'), limit(1));
-            await getDocs(q);
-            setConnectionStatus('connected');
-        } catch (error) {
-            console.error("Firebase connection test failed:", error);
-            setConnectionStatus('error');
-        }
-    };
-    checkFirebase();
-  }, []);
 
   const processSteps = [
     {
@@ -252,55 +308,46 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
     },
   ];
 
+  const firstRow = testimonials.slice(0, testimonials.length / 2);
+  const secondRow = testimonials.slice(testimonials.length / 2);
+
   return (
     <div className="w-full bg-[#FBF9F6]">
       {/* Hero Section */}
-      <div 
-        className="relative text-center py-16 md:py-24 px-4 min-h-[calc(100vh-80px)] flex flex-col justify-center items-center"
-      >
-        <div className="absolute inset-0" style={{background: 'radial-gradient(ellipse at top left, rgba(244, 234, 247, 0.6), transparent 50%), radial-gradient(ellipse at top right, rgba(251, 242, 231, 0.6), transparent 50%)'}}></div>
+      <div className="relative text-center py-20 md:py-32 px-4 flex flex-col justify-center items-center overflow-hidden min-h-[90vh]">
+        <div className="absolute inset-0 pointer-events-none" style={{background: 'radial-gradient(ellipse at 50% 0%, rgba(244, 234, 247, 0.6) 0%, transparent 60%), radial-gradient(ellipse at 80% 0%, rgba(251, 242, 231, 0.4) 0%, transparent 50%)'}}></div>
         
-        <div className="relative z-10">
-          {/* Connection Status Indicator */}
-          <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium mb-6 border transition-all duration-300 ${
-              connectionStatus === 'connected' ? 'bg-green-100 text-green-800 border-green-200' :
-              connectionStatus === 'error' ? 'bg-red-100 text-red-800 border-red-200' :
-              'bg-blue-100 text-blue-800 border-blue-200'
-          }`}>
-              <span className={`w-2 h-2 mr-2 rounded-full ${
-                  connectionStatus === 'connected' ? 'bg-green-500' :
-                  connectionStatus === 'error' ? 'bg-red-500' :
-                  'bg-blue-500 animate-pulse'
-              }`}></span>
-              {connectionStatus === 'connected' ? 'Database Connected' :
-               connectionStatus === 'error' ? 'Database Connection Failed' :
-               'Checking Connection...'}
-          </div>
-
-          <div className="mb-8 mx-auto bg-black w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg">
-            <span className="text-white text-4xl font-bold font-serif italic">I</span>
+        <div className="relative z-10 max-w-5xl mx-auto flex flex-col items-center">
+          
+          <div className="mb-8 bg-black w-16 h-16 rounded-2xl flex items-center justify-center shadow-2xl ring-1 ring-white/20">
+            <span className="text-white text-3xl font-serif italic">I</span>
           </div>
   
-          <h1 className="text-4xl md:text-6xl font-extrabold text-gray-900 mb-4 leading-tight max-w-4xl mx-auto">
-            Grade an entire class before your coffee gets cold ☕
+          <h1 className="text-5xl md:text-7xl font-extrabold text-gray-900 tracking-tight mb-6 leading-[1.1]">
+            Grade an entire class before <br className="hidden md:block" />
+            your coffee gets cold ☕
           </h1>
           
-          <p className="text-lg md:text-xl text-gray-700 max-w-3xl mx-auto mb-8">
+          <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-10 leading-relaxed">
             Set your marking criteria, and let IntelliGrade do the rest — stepwise marking, keyword detection, and instant summaries, all in one click.
           </p>
   
-          {/* Buttons removed as requested */}
-        </div>
+          <div className="flex flex-col sm:flex-row gap-4 items-center justify-center w-full">
+            <RainbowButton onClick={() => onLoginClick(Role.TEACHER)} className="h-12 px-8 text-base rounded-full shadow-lg">
+              Try IntelliGrade Free <span className="ml-2">→</span>
+            </RainbowButton>
+          </div>
 
-        <div className="relative z-10 mt-20 w-full max-w-5xl mx-auto">
-          <p className="text-sm text-gray-600">
-            Trusted by Educators, Powered by Results
-          </p>
-          <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-8">
-            <StatItem value="30+" label="Institutions" />
-            <StatItem value="1L+" label="Answer Sheets Graded" />
-            <StatItem value="95%" label="Time Saved on Grading" />
-            <StatItem value="500+" label="Active Teachers" />
+          <div className="mt-20 w-full">
+             <p className="text-sm font-medium text-gray-500 uppercase tracking-widest mb-8">
+                Trusted by Educators, Powered by Results
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-16 items-center">
+                 <StatItem value={30} suffix="+" label="Institutions" />
+                 <StatItem value={100} suffix="K+" label="Answer Sheets Graded" />
+                 <StatItem value={95} suffix="%" label="Time Saved on Grading" />
+                 <StatItem value={500} suffix="+" label="Active Teachers" />
+            </div>
           </div>
         </div>
       </div>
@@ -569,30 +616,32 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
         </div>
       </section>
 
-      {/* Testimonials Section */}
-      <section className="bg-white py-16 md:py-24">
-        <div className="container mx-auto px-4 md:px-8 max-w-7xl">
+      {/* Testimonials Section (Marquee) */}
+      <section className="bg-white py-16 md:py-24 overflow-hidden">
+        <div className="container mx-auto px-4 md:px-8 max-w-7xl mb-12">
           <div className="text-center max-w-3xl mx-auto">
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900">
-              Trusted by Educators Across India
+              Trusted by Educators Worldwide
             </h2>
             <p className="mt-4 text-lg text-gray-700">
-              See what professors and teachers are saying about IntelliGrade
+              See what professors and teachers from top institutions are saying about IntelliGrade
             </p>
           </div>
-          <div className="mt-16 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {testimonials.map((testimonial, index) => (
-              <div key={index} className="bg-white border border-gray-200 p-8 rounded-xl shadow-sm text-center flex flex-col items-center hover:shadow-lg transition-shadow">
-                <img src={testimonial.avatar} alt={testimonial.name} className="w-20 h-20 rounded-full mb-4 object-cover ring-2 ring-offset-2 ring-purple-200" />
-                <p className="text-gray-600 italic mb-6 flex-grow">"{testimonial.quote}"</p>
-                <div>
-                  <p className="font-semibold text-gray-900">{testimonial.name}</p>
-                  <p className="text-sm text-gray-500">{testimonial.title}</p>
-                  <p className="text-sm font-bold text-blue-600 mt-1">{testimonial.institution}</p>
-                </div>
-              </div>
+        </div>
+
+        <div className="relative flex w-full flex-col items-center justify-center overflow-hidden">
+          <Marquee pauseOnHover className="[--duration:40s]">
+            {firstRow.map((review) => (
+              <ReviewCard key={review.name} {...review} />
             ))}
-          </div>
+          </Marquee>
+          <Marquee reverse pauseOnHover className="[--duration:40s] mt-4">
+            {secondRow.map((review) => (
+              <ReviewCard key={review.name} {...review} />
+            ))}
+          </Marquee>
+          <div className="pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-white dark:from-background"></div>
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-white dark:from-background"></div>
         </div>
       </section>
 
@@ -680,8 +729,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
           <div className="mt-12 border-t border-gray-700 pt-8">
             <p className="text-base text-gray-400 xl:text-center">&copy; {new Date().getFullYear()} IntelliGrade, Inc. All rights reserved.</p>
           </div>
-        </div>
-      </footer>
+        </footer>
     </div>
   );
 };

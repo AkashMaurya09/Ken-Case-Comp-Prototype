@@ -8,12 +8,14 @@ import { Spinner } from '../../components/Spinner';
 import { QuestionReviewModal } from './QuestionReviewModal';
 import { useAppContext } from '../../context/AppContext';
 import { useToast } from '../../context/ToastContext';
+import { RainbowButton } from '../../components/RainbowButton';
 
 type CreatePaperStep = 'upload_paper' | 'define_rubric';
 
 interface CreateQuestionPaperProps {
     onPaperCreated: () => void;
     initialPaper?: QuestionPaper;
+    onBack?: () => void;
 }
 
 interface ExtractedQuestion {
@@ -24,13 +26,16 @@ interface ExtractedQuestion {
     keywords?: { keyword: string; marks: number }[];
 }
 
-export const CreateQuestionPaper: React.FC<CreateQuestionPaperProps> = ({ onPaperCreated, initialPaper }) => {
+export const CreateQuestionPaper: React.FC<CreateQuestionPaperProps> = ({ onPaperCreated, initialPaper, onBack }) => {
     const { addQuestionPaper, updateQuestionPaper } = useAppContext();
     const toast = useToast();
     const [currentStep, setCurrentStep] = useState<CreatePaperStep>('upload_paper');
-    const [paperTitle, setPaperTitle] = useState('');
     
-    // Refactored state for better stability
+    // Paper Details State
+    const [paperTitle, setPaperTitle] = useState('');
+    const [paperSubject, setPaperSubject] = useState('');
+    const [paperDescription, setPaperDescription] = useState('');
+
     const [rubric, setRubric] = useState<RubricItem[]>([]);
     const [modelAnswerFile, setModelAnswerFile] = useState<{ file?: File; previewUrl: string } | null>(null);
 
@@ -38,7 +43,6 @@ export const CreateQuestionPaper: React.FC<CreateQuestionPaperProps> = ({ onPape
     const [isSaving, setIsSaving] = useState(false);
     const [qpuploadKey, setQpuploadKey] = useState(Date.now());
     
-    // Updated state type to include finalAnswer and detailed grading
     const [extractedQuestionsForReview, setExtractedQuestionsForReview] = useState<ExtractedQuestion[] | null>(null);
 
     // Populate form if editing
@@ -46,15 +50,21 @@ export const CreateQuestionPaper: React.FC<CreateQuestionPaperProps> = ({ onPape
         if (initialPaper) {
             console.log(`[CreateQuestionPaper] Initializing editing mode for paper: ${initialPaper.title}`);
             setPaperTitle(initialPaper.title);
+            setPaperSubject(initialPaper.subject || '');
+            setPaperDescription(initialPaper.description || '');
             setRubric(initialPaper.rubric);
-            setModelAnswerFile({ 
-                file: initialPaper.modelAnswerFile, 
-                previewUrl: initialPaper.modelAnswerPreviewUrl 
-            });
+            if (initialPaper.modelAnswerPreviewUrl) {
+                setModelAnswerFile({ 
+                    file: initialPaper.modelAnswerFile, 
+                    previewUrl: initialPaper.modelAnswerPreviewUrl 
+                });
+            }
             setCurrentStep('define_rubric');
         } else {
             // Reset if switching to create mode
             setPaperTitle('');
+            setPaperSubject('');
+            setPaperDescription('');
             setRubric([]);
             setModelAnswerFile(null);
             setCurrentStep('upload_paper');
@@ -106,11 +116,9 @@ export const CreateQuestionPaper: React.FC<CreateQuestionPaperProps> = ({ onPape
             toast.error("Please enter a title for the question paper.");
             return;
         }
-        if (!modelAnswerFile) {
-            console.warn("[CreateQuestionPaper] Validation failed: Model answer missing");
-            toast.error("Please upload a model answer sheet.");
-            return;
-        }
+        
+        // Model answer is now optional
+        
         if (rubric.length === 0) {
             console.warn("[CreateQuestionPaper] Validation failed: Rubric empty");
             toast.error("Please define at least one question in the rubric.");
@@ -123,8 +131,10 @@ export const CreateQuestionPaper: React.FC<CreateQuestionPaperProps> = ({ onPape
         const newPaper: QuestionPaper = {
             id: initialPaper ? initialPaper.id : `paper-${Date.now()}`,
             title: paperTitle,
-            modelAnswerFile: modelAnswerFile.file, // Might be undefined if editing and not changed, which matches optional type
-            modelAnswerPreviewUrl: modelAnswerFile.previewUrl,
+            subject: paperSubject,
+            description: paperDescription,
+            modelAnswerFile: modelAnswerFile?.file, 
+            modelAnswerPreviewUrl: modelAnswerFile?.previewUrl || '',
             rubric: rubric,
             createdAt: initialPaper ? initialPaper.createdAt : new Date()
         };
@@ -151,9 +161,21 @@ export const CreateQuestionPaper: React.FC<CreateQuestionPaperProps> = ({ onPape
 
     return (
         <div className="space-y-8">
-            <header>
-                <h2 className="text-3xl font-bold text-gray-800">{initialPaper ? 'Edit Question Paper' : 'Create New Paper'}</h2>
-                <p className="mt-2 text-gray-600">{initialPaper ? 'Update the details and rubric below.' : 'Follow the steps below to set up your paper and define the grading criteria.'}</p>
+            <header className="flex justify-between items-start">
+                <div>
+                    <div className="flex items-center gap-2 mb-2">
+                        {onBack && (
+                            <button 
+                                onClick={onBack}
+                                className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                            >
+                                &larr; Back to All Papers
+                            </button>
+                        )}
+                    </div>
+                    <h2 className="text-3xl font-bold text-gray-800">{initialPaper ? 'Edit Question Paper' : 'Create New Paper'}</h2>
+                    <p className="mt-2 text-gray-600">{initialPaper ? 'Update the details and rubric below.' : 'Follow the steps below to set up your paper and define the grading criteria.'}</p>
+                </div>
             </header>
             
             {currentStep === 'upload_paper' && (
@@ -179,55 +201,81 @@ export const CreateQuestionPaper: React.FC<CreateQuestionPaperProps> = ({ onPape
 
             {currentStep === 'define_rubric' && (
                  <div className="bg-white p-6 rounded-lg shadow-sm">
-                    <h3 className="text-xl font-semibold mb-4 text-gray-700">Step 2: Define Rubric & Model Answer</h3>
+                    <h3 className="text-xl font-semibold mb-4 text-gray-700">Step 2: Paper Details & Rubric</h3>
                      
                      <div className="mb-6 space-y-4">
-                        <div>
-                           <label htmlFor="paperTitle" className="block text-sm font-medium text-gray-700 mb-1">
-                                Paper Title
-                                <span className="text-red-500 ml-1">*</span>
-                           </label>
-                           <input
-                                type="text"
-                                id="paperTitle"
-                                value={paperTitle}
-                                onChange={(e) => setPaperTitle(e.target.value)}
-                                placeholder="e.g., Mid-Term Physics Exam"
-                                className="p-2 border rounded-md w-full bg-white"
-                           />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="col-span-1 md:col-span-2">
+                                <label htmlFor="paperTitle" className="block text-sm font-medium text-gray-700 mb-1">
+                                        Paper Title <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                        type="text"
+                                        id="paperTitle"
+                                        value={paperTitle}
+                                        onChange={(e) => setPaperTitle(e.target.value)}
+                                        placeholder="e.g., Mid-Term Physics Exam"
+                                        className="p-2 border rounded-md w-full bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                />
+                            </div>
+                            
+                            <div>
+                                <label htmlFor="paperSubject" className="block text-sm font-medium text-gray-700 mb-1">
+                                        Subject (Optional)
+                                </label>
+                                <input
+                                        type="text"
+                                        id="paperSubject"
+                                        value={paperSubject}
+                                        onChange={(e) => setPaperSubject(e.target.value)}
+                                        placeholder="e.g., Physics, History, Math"
+                                        className="p-2 border rounded-md w-full bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                />
+                            </div>
                         </div>
-                        <FileUpload 
-                            onFileUpload={handleModelAnswerUpload} 
-                            label="Upload the ideal answer sheet (Image or PDF)" 
-                            required 
-                            acceptedTypes="image/*,application/pdf"
-                            initialPreviewUrl={modelAnswerFile?.previewUrl}
-                            initialFileType={modelAnswerFile?.file?.type}
-                        />
+
+                        <div>
+                            <label htmlFor="paperDescription" className="block text-sm font-medium text-gray-700 mb-1">
+                                    Instructions / Description (Optional)
+                            </label>
+                            <textarea
+                                    id="paperDescription"
+                                    value={paperDescription}
+                                    onChange={(e) => setPaperDescription(e.target.value)}
+                                    placeholder="Enter any instructions for students or details about the exam..."
+                                    className="p-2 border rounded-md w-full bg-white focus:ring-2 focus:ring-blue-500 outline-none h-24 resize-none"
+                            />
+                        </div>
+
+                        <div className="border-t border-gray-100 pt-4">
+                            <FileUpload 
+                                onFileUpload={handleModelAnswerUpload} 
+                                label="Upload Model Answer Sheet (Optional)" 
+                                required={false} 
+                                acceptedTypes="image/*,application/pdf"
+                                initialPreviewUrl={modelAnswerFile?.previewUrl}
+                                initialFileType={modelAnswerFile?.file?.type}
+                            />
+                            <p className="text-xs text-gray-500 mt-1">Uploading a model answer helps the AI grade with higher accuracy, but you can also just use the rubric text.</p>
+                        </div>
                     </div>
 
                      <div className="mb-8 p-4 bg-blue-50 border-l-4 border-blue-400">
-                        <h4 className="font-semibold text-blue-800">Pro Tip!</h4>
-                        <p className="text-sm text-blue-700">Use the extracted steps and keywords to ensure consistent grading. You can manually edit any AI suggestion below.</p>
+                        <h4 className="font-semibold text-blue-800">Rubric</h4>
+                        <p className="text-sm text-blue-700">Define the questions and grading criteria below. Step-wise marking and keywords help the AI grade accurately.</p>
                      </div>
                     <RubricEditor rubric={rubric} onRubricUpdate={setRubric} />
                     <div className="flex gap-4 mt-6">
-                         {initialPaper && (
-                            <button
-                                onClick={() => onPaperCreated()} // Cancel edit
-                                className="w-1/3 bg-gray-200 text-gray-800 p-3 rounded-md hover:bg-gray-300 transition-colors"
-                            >
-                                Cancel
-                            </button>
-                         )}
-                        <button 
-                            onClick={handleSavePaper}
-                            disabled={isSaving}
-                            className="flex-grow bg-green-600 text-white p-3 rounded-md hover:bg-green-700 transition-colors disabled:bg-gray-400 flex justify-center items-center gap-2"
-                        >
-                            {isSaving ? <Spinner size="sm" /> : null}
-                            {isSaving ? 'Saving...' : (initialPaper ? 'Update Paper' : 'Save Paper & Make Available')}
-                        </button>
+                         <div className="flex-grow">
+                             <RainbowButton 
+                                onClick={handleSavePaper}
+                                disabled={isSaving}
+                                className="w-full"
+                             >
+                                {isSaving ? <Spinner size="sm" /> : null}
+                                {isSaving ? 'Saving...' : (initialPaper ? 'Update Paper' : 'Save Paper & Make Available')}
+                            </RainbowButton>
+                         </div>
                     </div>
                 </div>
             )}

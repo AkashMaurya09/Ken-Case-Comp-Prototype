@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { RubricItem } from '../../types';
 
@@ -89,10 +90,38 @@ export const RubricEditor: React.FC<RubricEditorProps> = ({ rubric, onRubricUpda
                         <button onClick={() => removeQuestion(item.id)} className="text-red-500 hover:text-red-700">&times; Remove</button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                         <input type="text" placeholder="Question Text" value={item.question} onChange={e => updateQuestion(item.id, 'question', e.target.value)} className="p-2 border rounded-md w-full col-span-2 bg-white" />
-                         <input type="number" placeholder="Total Marks" value={item.totalMarks} onChange={e => updateQuestion(item.id, 'totalMarks', parseInt(e.target.value) || 0)} className="p-2 border rounded-md bg-white" />
-                         <input type="text" placeholder="Expected Final Answer (Optional)" value={item.finalAnswer || ''} onChange={e => updateQuestion(item.id, 'finalAnswer', e.target.value)} className="p-2 border rounded-md bg-white" />
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="md:col-span-4">
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Question Text</label>
+                            <textarea 
+                                placeholder="Enter the question..." 
+                                value={item.question} 
+                                onChange={e => updateQuestion(item.id, 'question', e.target.value)} 
+                                className="p-3 border border-gray-300 rounded-md w-full bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none resize-y min-h-[60px]"
+                                rows={2}
+                            />
+                        </div>
+                        
+                        <div className="md:col-span-3">
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Expected Final Answer (Optional)</label>
+                            <textarea 
+                                placeholder="Enter the expected answer or solution..." 
+                                value={item.finalAnswer || ''} 
+                                onChange={e => updateQuestion(item.id, 'finalAnswer', e.target.value)} 
+                                className="p-3 border border-gray-300 rounded-md w-full bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none h-24 resize-none" 
+                            />
+                        </div>
+
+                        <div className="md:col-span-1">
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Marks</label>
+                            <input 
+                                type="number" 
+                                placeholder="0" 
+                                value={item.totalMarks} 
+                                onChange={e => updateQuestion(item.id, 'totalMarks', parseInt(e.target.value) || 0)} 
+                                className="p-3 border border-gray-300 rounded-md w-full bg-white text-gray-900 font-bold text-center focus:ring-2 focus:ring-blue-500 outline-none h-24" 
+                            />
+                        </div>
                     </div>
 
                     {/* Step-wise Marking */}

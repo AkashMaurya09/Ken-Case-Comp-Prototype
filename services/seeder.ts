@@ -18,6 +18,8 @@ const MASTER_PAPERS: QuestionPaper[] = [
     {
         id: 'paper-physics-101',
         title: 'Physics Mid-Term: Mechanics',
+        subject: 'Physics',
+        description: 'Covers Newton\'s laws, kinematics, and basic dynamics. Duration: 60 mins.',
         modelAnswerPreviewUrl: 'https://placehold.co/600x800/e2e8f0/1e293b?text=Model+Answer+Key',
         createdAt: new Date('2023-10-01'),
         rubric: [
@@ -63,6 +65,8 @@ const MASTER_PAPERS: QuestionPaper[] = [
     {
         id: 'paper-math-202',
         title: 'Calculus I: Derivatives & Limits',
+        subject: 'Mathematics',
+        description: 'Assessment on basic differentiation rules and limit evaluation.',
         modelAnswerPreviewUrl: 'https://placehold.co/600x800/e2e8f0/1e293b?text=Math+Key',
         createdAt: new Date('2023-10-10'),
         rubric: [
@@ -94,6 +98,8 @@ const MASTER_PAPERS: QuestionPaper[] = [
     {
         id: 'paper-cs-303',
         title: 'CS 101: Intro to Python Programming',
+        subject: 'Computer Science',
+        description: 'Basics of functions, loops, and list comprehensions.',
         modelAnswerPreviewUrl: 'https://placehold.co/600x800/e2e8f0/1e293b?text=Code+Solution',
         createdAt: new Date('2023-10-20'),
         rubric: [
@@ -130,6 +136,8 @@ const MASTER_PAPERS: QuestionPaper[] = [
     {
         id: 'paper-hist-404',
         title: 'World History: The 20th Century',
+        subject: 'History',
+        description: 'Analysis of major global conflicts and their causes.',
         modelAnswerPreviewUrl: 'https://placehold.co/600x800/e2e8f0/1e293b?text=History+Notes',
         createdAt: new Date('2023-10-25'),
         rubric: [
@@ -152,6 +160,8 @@ const MASTER_PAPERS: QuestionPaper[] = [
     {
         id: 'paper-chem-505',
         title: 'Chemistry: Organic Reactions',
+        subject: 'Chemistry',
+        description: 'Focus on SN1/SN2 mechanisms and stereochemistry.',
         modelAnswerPreviewUrl: 'https://placehold.co/600x800/e2e8f0/1e293b?text=Chemical+Structures',
         createdAt: new Date('2023-11-01'),
         rubric: [

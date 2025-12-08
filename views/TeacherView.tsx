@@ -62,7 +62,11 @@ export const TeacherView: React.FC = () => {
                 return (
                     <CreateQuestionPaper 
                         initialPaper={editingPaper || undefined}
-                        onPaperCreated={handlePaperCreated} 
+                        onPaperCreated={handlePaperCreated}
+                        onBack={() => {
+                            setEditingPaper(null);
+                            setActiveTab('view');
+                        }}
                     />
                 );
             case 'view':

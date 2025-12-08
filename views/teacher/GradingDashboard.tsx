@@ -1,5 +1,5 @@
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState, useRef } from 'react';
 import { QuestionPaper, StudentSubmission, GradedResult } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import { FileUpload } from '../../components/FileUpload';
@@ -7,6 +7,8 @@ import { GradingInterface } from './GradingInterface';
 import { gradeAnswerSheet } from '../../services/geminiService';
 import { useToast } from '../../context/ToastContext';
 import { triggerConfetti } from '../../utils/confetti';
+import { RainbowButton } from '../../components/RainbowButton';
+import { Spinner } from '../../components/Spinner';
 
 interface GradingDashboardProps {
   paper: QuestionPaper;
@@ -25,29 +27,123 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
   const [activeSubmissionId, setActiveSubmissionId] = useState<string | null>(initialSubmissionId || null);
   // State to trigger auto-grading upon opening the interface
   const [autoGradeTrigger, setAutoGradeTrigger] = useState(false);
+  
+  // State for student name input during upload
+  const [studentNameInput, setStudentNameInput] = useState('');
+  
+  // Lock to prevent double grading triggers (e.g. from StrictMode effects or rapid clicks)
+  const gradingLocks = useRef<Set<string>>(new Set());
 
   const submissionsForThisPaper = useMemo(() => 
     studentSubmissions.filter(s => s.paperId === paper.id)
     .sort((a, b) => b.submissionDate.getTime() - a.submissionDate.getTime()), 
     [studentSubmissions, paper.id]
   );
+
+  const gradingCount = submissionsForThisPaper.filter(s => s.isGrading).length;
+
+  const handleGradeSubmission = useCallback(async (submissionId: string, directSubmission?: StudentSubmission) => {
+    // Check lock to prevent duplicate calls
+    if (gradingLocks.current.has(submissionId)) {
+        console.log("[GradingDashboard] Grading already in progress (lock active) for", submissionId);
+        return;
+    }
+
+    const submission = directSubmission || submissionsForThisPaper.find(s => s.id === submissionId);
+    
+    if (!submission) {
+        console.error("Submission not found for grading");
+        return;
+    }
+    
+    // Check state just in case
+    if (submission.isGrading) return;
+
+    // Set lock
+    gradingLocks.current.add(submissionId);
+    
+    // Optimistic update
+    updateSubmission({ ...submission, isGrading: true });
+
+    try {
+        // Validation for demo mode
+        if (!submission.file && submission.previewUrl.includes('placehold.co')) {
+             throw new Error("Cannot grade this placeholder/bulk submission in demo mode. Please upload a real file.");
+        }
+
+        const startTime = performance.now();
+        const gradedResults: GradedResult[] = [];
+        for (const rubricItem of paper.rubric) {
+            const result = await gradeAnswerSheet(submission.file || submission.previewUrl, rubricItem);
+            
+            // CRITICAL: Check for Fatal Validation Error from AI
+            if (result.feedback.includes("FATAL_ERROR: INVALID_IMAGE_CONTENT")) {
+                throw new Error("Invalid Document: The AI detected that this is likely a non-academic image (e.g., photo of a person, object). Grading aborted.");
+            }
+
+            // Merge existing comments/history if this is a regrade
+            if (submission.gradedResults) {
+                const existingResult = submission.gradedResults.find(r => r.questionId === rubricItem.id);
+                if (existingResult) {
+                    result.teacherComments = existingResult.teacherComments;
+                    result.resolutionComment = existingResult.resolutionComment;
+                }
+            }
+            
+            gradedResults.push(result);
+        }
+        const endTime = performance.now();
+        const gradingDuration = endTime - startTime;
+        
+        updateSubmission({ 
+            ...submission, 
+            isGrading: false, 
+            gradedResults,
+            gradingDuration
+        });
+        toast.success("Grading complete!");
+        triggerConfetti();
+
+    } catch (error: any) {
+        console.error("Grading failed:", error);
+        toast.error(error.message || "Grading failed.");
+        updateSubmission({ ...submission, isGrading: false });
+    } finally {
+        // Release lock
+        gradingLocks.current.delete(submissionId);
+    }
+  }, [submissionsForThisPaper, updateSubmission, paper.rubric, toast]);
   
-  const handleStudentSubmissionUpload = useCallback((file: File, previewUrl: string) => {
+  const handleStudentSubmissionUpload = useCallback(async (file: File, previewUrl: string) => {
     console.log(`[GradingDashboard] Individual submission upload started: ${file.name}`);
+    
+    const finalStudentName = studentNameInput.trim() || `Student ${submissionsForThisPaper.length + 1}`;
+
+    const newSubmissionId = `sub-${Date.now()}`;
     const newSubmission: StudentSubmission = {
-        id: `sub-${Date.now()}`,
+        id: newSubmissionId,
         paperId: paper.id,
-        studentName: `Student ${submissionsForThisPaper.length + 1}`,
+        studentName: finalStudentName,
         file,
         previewUrl,
         submissionDate: new Date(),
         isGrading: false,
         uploadMethod: 'Individual Upload'
     };
-    addStudentSubmission(newSubmission);
-    toast.success("Student submission added successfully.");
+
+    // 1. Add to Database
+    await addStudentSubmission(newSubmission);
+    
+    toast.success(`Submission for ${finalStudentName} added. Auto-grading started...`);
+    
+    setStudentNameInput(''); // Reset name input
     setUploadMode('hidden');
-  }, [paper.id, addStudentSubmission, submissionsForThisPaper.length, toast]);
+
+    // 2. Trigger Auto-Grading (Async)
+    // We pass the new object directly to avoid waiting for context refresh cycle
+    handleGradeSubmission(newSubmissionId, newSubmission);
+
+  }, [paper.id, addStudentSubmission, submissionsForThisPaper.length, toast, handleGradeSubmission, studentNameInput]);
 
   const handleBulkCSVUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
@@ -92,34 +188,40 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
       reader.readAsText(file);
   };
 
-  const handleGradeSubmission = async (submissionId: string) => {
-    const submission = submissionsForThisPaper.find(s => s.id === submissionId)!;
-    updateSubmission({ ...submission, isGrading: true });
+  const handleRegradeQuestion = async (submissionId: string, questionId: string) => {
+    const submission = submissionsForThisPaper.find(s => s.id === submissionId);
+    if (!submission) return;
+
+    const rubricItem = paper.rubric.find(q => q.id === questionId);
+    if (!rubricItem) return;
 
     try {
-        // Validation for demo mode
-        if (!submission.file && submission.previewUrl.includes('placehold.co')) {
-             throw new Error("Cannot grade this placeholder/bulk submission in demo mode. Please upload a real file.");
-        }
-
-        const gradedResults: GradedResult[] = [];
-        for (const rubricItem of paper.rubric) {
-            const result = await gradeAnswerSheet(submission.file || submission.previewUrl, rubricItem);
-            gradedResults.push(result);
-        }
+        const result = await gradeAnswerSheet(submission.file || submission.previewUrl, rubricItem);
         
-        updateSubmission({ 
-            ...submission, 
-            isGrading: false, 
-            gradedResults 
-        });
-        toast.success("Grading complete!");
-        triggerConfetti();
+        // Find existing result to preserve comments
+        const existingResult = submission.gradedResults?.find(r => r.questionId === questionId);
+        
+        const mergedResult = {
+            ...result,
+            // Preserve history
+            teacherComments: existingResult?.teacherComments || [],
+            resolutionComment: existingResult?.resolutionComment,
+        };
+        
+        const currentResults = submission.gradedResults || [];
+        const updatedResults = currentResults.some(r => r.questionId === questionId)
+           ? currentResults.map(r => r.questionId === questionId ? mergedResult : r)
+           : [...currentResults, mergedResult];
 
-    } catch (error: any) {
-        console.error("Grading failed:", error);
-        toast.error(error.message || "Grading failed.");
-        updateSubmission({ ...submission, isGrading: false });
+        updateSubmission({
+            ...submission,
+            gradedResults: updatedResults
+        });
+        triggerConfetti();
+        toast.success("Question regraded successfully.");
+    } catch (e: any) {
+        console.error("Regrade failed:", e);
+        toast.error("Failed to regrade question.");
     }
   };
   
@@ -129,7 +231,8 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
       newMarks: number, 
       comment?: string,
       newStepAnalysis?: GradedResult['stepAnalysis'],
-      newKeywordAnalysis?: GradedResult['keywordAnalysis']
+      newKeywordAnalysis?: GradedResult['keywordAnalysis'],
+      teacherComments?: { text: string; timestamp: Date }[]
   ) => {
      const submission = submissionsForThisPaper.find(s => s.id === submissionId);
      if(submission) {
@@ -140,7 +243,8 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
                 disputed: false, 
                 resolutionComment: comment || r.resolutionComment,
                 stepAnalysis: newStepAnalysis || r.stepAnalysis,
-                keywordAnalysis: newKeywordAnalysis || r.keywordAnalysis
+                keywordAnalysis: newKeywordAnalysis || r.keywordAnalysis,
+                teacherComments: teacherComments || r.teacherComments
             } : r
         );
         updateSubmission({ ...submission, gradedResults: updatedResults });
@@ -197,6 +301,7 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
               hasPrev={submissionsForThisPaper.findIndex(s => s.id === activeSubmissionId) > 0}
               onGradeSubmission={handleGradeSubmission}
               onGradeOverride={handleGradeOverride}
+              onRegradeQuestion={handleRegradeQuestion}
               autoStart={autoGradeTrigger}
           />
       );
@@ -212,15 +317,25 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
                 <p className="mt-1 text-lg text-gray-600">{paper.title}</p>
             </div>
             <div className="flex gap-2">
-                 <button 
+                 <RainbowButton 
                     onClick={() => setUploadMode(uploadMode === 'hidden' ? 'choose' : 'hidden')}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-2"
+                    className="h-10 px-4 text-sm"
                 >
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                     Add Submission
-                </button>
+                </RainbowButton>
             </div>
         </div>
+
+        {/* Grading Status Banner */}
+        {gradingCount > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3 animate-slide-up shadow-sm">
+                <Spinner size="sm" />
+                <p className="text-blue-700 font-medium text-sm">
+                    AI is currently grading {gradingCount} submission{gradingCount !== 1 ? 's' : ''}. This requires complex reasoning and may take a moment.
+                </p>
+            </div>
+        )}
 
         {/* Upload Mode Panels */}
         {uploadMode !== 'hidden' && (
@@ -262,6 +377,18 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
                             &larr; Back
                         </button>
                         <h3 className="text-lg font-bold text-gray-800 mb-4 text-center">Upload Single Submission</h3>
+                        
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Student Name (Optional)</label>
+                            <input 
+                                type="text" 
+                                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                placeholder="Enter student name e.g. John Doe"
+                                value={studentNameInput}
+                                onChange={(e) => setStudentNameInput(e.target.value)}
+                            />
+                        </div>
+
                         <FileUpload onFileUpload={handleStudentSubmissionUpload} label="Upload answer sheet (Image/PDF)" acceptedTypes="image/*,application/pdf" />
                      </div>
                  )}
@@ -306,6 +433,7 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
                                 <th className="px-6 py-4">Method / ID</th>
                                 <th className="px-6 py-4">Status</th>
                                 <th className="px-6 py-4">Score</th>
+                                <th className="px-6 py-4">Time</th>
                                 <th className="px-6 py-4 text-right">Actions</th>
                             </tr>
                         </thead>
@@ -354,7 +482,7 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
                                         <td className="px-6 py-4">
                                             {sub.isGrading ? (
                                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 animate-pulse">
-                                                    Grading...
+                                                    {sub.gradedResults ? 'Regrading...' : 'Grading...'}
                                                 </span>
                                             ) : hasDispute ? (
                                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
@@ -381,6 +509,9 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
                                             ) : (
                                                 <span className="text-gray-400 text-sm">-</span>
                                             )}
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-gray-500">
+                                            {sub.gradingDuration ? `${(sub.gradingDuration / 1000).toFixed(1)}s` : '-'}
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <button 

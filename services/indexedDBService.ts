@@ -35,6 +35,8 @@ const openDB = (): Promise<IDBDatabase> => {
 interface StoredPaper {
     id: string;
     title: string;
+    subject?: string;
+    description?: string;
     rubric: RubricItem[];
     createdAt: Date;
     modelAnswerBlob?: Blob; // Store binary
@@ -51,6 +53,7 @@ interface StoredSubmission {
     gradedResults?: GradedResult[];
     isGrading: boolean;
     uploadMethod?: 'Individual Upload' | 'Bulk Import';
+    gradingDuration?: number;
 }
 
 export const LocalDB = {
@@ -63,6 +66,8 @@ export const LocalDB = {
             const storedData: StoredPaper = {
                 id: paper.id,
                 title: paper.title,
+                subject: paper.subject,
+                description: paper.description,
                 rubric: paper.rubric,
                 createdAt: paper.createdAt || new Date(),
                 modelAnswerBlob: fileBlob, // Save the blob!
@@ -91,8 +96,8 @@ export const LocalDB = {
                     if (p.modelAnswerBlob) {
                         previewUrl = URL.createObjectURL(p.modelAnswerBlob);
                     } else {
-                        // Fallback for demo data or text-only updates
-                        previewUrl = 'https://placehold.co/600x800/e2e8f0/1e293b?text=No+Image';
+                        // Fallback/Optional
+                        previewUrl = ''; 
                     }
 
                     // Reconstruct File object if blob exists and type is known
@@ -106,6 +111,8 @@ export const LocalDB = {
                     return {
                         id: p.id,
                         title: p.title,
+                        subject: p.subject,
+                        description: p.description,
                         rubric: p.rubric,
                         createdAt: p.createdAt,
                         modelAnswerPreviewUrl: previewUrl,
@@ -151,7 +158,8 @@ export const LocalDB = {
                     fileType: submission.file?.type || existing?.fileType,
                     gradedResults: submission.gradedResults,
                     isGrading: submission.isGrading,
-                    uploadMethod: submission.uploadMethod
+                    uploadMethod: submission.uploadMethod,
+                    gradingDuration: submission.gradingDuration
                 };
 
                 const putReq = store.put(storedData);
@@ -195,7 +203,8 @@ export const LocalDB = {
                         file: file,
                         gradedResults: s.gradedResults,
                         isGrading: s.isGrading,
-                        uploadMethod: s.uploadMethod
+                        uploadMethod: s.uploadMethod,
+                        gradingDuration: s.gradingDuration
                     };
                 });
                 submissions.sort((a, b) => new Date(b.submissionDate).getTime() - new Date(a.submissionDate).getTime());

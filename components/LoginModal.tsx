@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Role } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -70,7 +71,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onClose, initialRole = R
                         }`}
                         onClick={() => setActiveRole(Role.TEACHER)}
                     >
-                        Teacher Portal
+                        Educator Login
                     </button>
                     <button 
                         className={`flex-1 py-6 text-sm font-bold uppercase tracking-wider transition-colors ${

@@ -2,6 +2,7 @@
 import React, { useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
+import { AuroraText } from '../../components/AuroraText';
 
 interface TeacherDashboardProps {
     onNavigate: (tab: 'create' | 'view' | 'analytics' | 'disputes') => void;
@@ -140,7 +141,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigate }
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-gray-200 pb-6">
                 <div>
                     <h2 className="text-3xl font-bold text-gray-800 tracking-tight">
-                        {greeting}, <span className="text-blue-600">{userProfile?.displayName?.split(' ')[0] || 'Educator'}</span>
+                        <AuroraText className="font-extrabold text-4xl">
+                            {greeting}, {userProfile?.displayName?.split(' ')[0] || 'Educator'}
+                        </AuroraText>
                     </h2>
                     <p className="mt-1 text-gray-500 font-medium">Here's what's happening in your classroom today.</p>
                 </div>

@@ -2,6 +2,7 @@
 import React, { useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
+import { RainbowButton } from '../../components/RainbowButton';
 
 interface StudentDashboardProps {
     onNavigate: (tab: 'submit' | 'submissions' | 'analytics' | 'disputes') => void;
@@ -156,13 +157,13 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ onNavigate }
                     <p className="mt-1 text-gray-500 font-medium">Ready to continue your learning journey?</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <button 
+                    <RainbowButton 
                         onClick={() => onNavigate('submit')}
-                        className="bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold shadow-lg hover:bg-indigo-700 transition-all flex items-center gap-2 transform hover:-translate-y-0.5"
+                        className="h-10 px-6 text-sm"
                     >
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                         Submit Paper
-                    </button>
+                    </RainbowButton>
                 </div>
             </div>
 

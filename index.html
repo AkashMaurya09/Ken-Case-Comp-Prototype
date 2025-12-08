@@ -36,6 +36,49 @@
         .animate-dropdown {
             animation: dropdown-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
+
+        /* Rainbow Button Styles */
+        :root {
+          --color-1: 0 100% 63%;
+          --color-2: 270 100% 63%;
+          --color-3: 210 100% 63%;
+          --color-4: 195 100% 63%;
+          --color-5: 90 100% 63%;
+        }
+        
+        @keyframes rainbow {
+          0% { background-position: 0%; }
+          100% { background-position: 200%; }
+        }
+        
+        .animate-rainbow {
+          animation: rainbow 2s infinite linear;
+        }
+
+        /* Marquee Animation */
+        @keyframes marquee {
+          from { transform: translateX(0); }
+          to { transform: translateX(calc(-100% - var(--gap))); }
+        }
+        @keyframes marquee-vertical {
+          from { transform: translateY(0); }
+          to { transform: translateY(calc(-100% - var(--gap))); }
+        }
+        .animate-marquee {
+          animation: marquee var(--duration) linear infinite;
+        }
+        .animate-marquee-vertical {
+          animation: marquee-vertical var(--duration) linear infinite;
+        }
+
+        /* Aurora Text Animation */
+        @keyframes aurora-text {
+          0% { background-position: 0% center; }
+          100% { background-position: -200% center; }
+        }
+        .animate-aurora-text {
+          animation: aurora-text 6s linear infinite;
+        }
     </style>
   <script type="importmap">
 {
