@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { StudentSubmission, QuestionPaper } from '../../types';
+import { StudentSubmission, QuestionPaper, GradingStatus } from '../../types';
 import { RainbowButton } from '../../components/RainbowButton';
 
 interface AllSubmissionsProps {
@@ -57,6 +57,7 @@ export const AllSubmissions: React.FC<AllSubmissionsProps> = ({ onViewResults })
                         {mySubmissions.sort((a,b) => b.submissionDate.getTime() - a.submissionDate.getTime()).map(sub => {
                             const paper = getPaperDetails(sub.paperId);
                             const { awarded, total, percentage, isGraded } = calculateScore(sub);
+                            const isFailed = sub.gradingStatus === GradingStatus.ERROR;
                             
                             return (
                                 <div key={sub.id} className="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200 flex flex-col overflow-hidden">
@@ -69,7 +70,12 @@ export const AllSubmissions: React.FC<AllSubmissionsProps> = ({ onViewResults })
                                                     {sub.submissionDate.toLocaleDateString()}
                                                 </p>
                                             </div>
-                                            {isGraded ? (
+                                            {isFailed ? (
+                                                <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1">
+                                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                    Grading Failed
+                                                </span>
+                                            ) : isGraded ? (
                                                 <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1">
                                                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                                                     Graded
@@ -83,7 +89,12 @@ export const AllSubmissions: React.FC<AllSubmissionsProps> = ({ onViewResults })
                                         </div>
 
                                         <div className="py-4 border-t border-gray-100 border-b border-gray-100 mb-4 flex items-center justify-center min-h-[5rem]">
-                                            {isGraded ? (
+                                            {isFailed ? (
+                                                <div className="text-center text-red-500">
+                                                    <svg className="w-8 h-8 mx-auto mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                                    <p className="text-sm font-medium">Please retry grading</p>
+                                                </div>
+                                            ) : isGraded ? (
                                                 <div className="text-center">
                                                     <span className={`text-4xl font-extrabold ${getScoreColor(percentage)}`}>{percentage}%</span>
                                                     <p className="text-xs text-gray-400 font-medium uppercase tracking-wider mt-1">Total Score</p>
@@ -91,7 +102,7 @@ export const AllSubmissions: React.FC<AllSubmissionsProps> = ({ onViewResults })
                                                 </div>
                                             ) : (
                                                 <div className="text-center text-gray-400">
-                                                    <svg className="w-8 h-8 mx-auto mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547a2 2 0 00-.547 1.806l.477 2.387a6 6 0 00.517 3.86l.158.318a6 6 0 00.517 3.86l2.387.477a2 2 0 001.806.547a2 2 0 001.022-.547l3.182-3.182a6 6 0 00.517-3.86l.158-.318a6 6 0 00.517 3.86l.477-2.387a2 2 0 00.547-1.806z" /></svg>
+                                                    <svg className="w-8 h-8 mx-auto mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547a2 2 0 00-.547 1.806l.477 2.387a6 6 0 00.517 3.86l.158.318a6 6 0 00.517 3.86l.477-2.387a2 2 0 00.547-1.806z" /></svg>
                                                     <p className="text-sm font-medium">Waiting for grading...</p>
                                                 </div>
                                             )}
@@ -116,7 +127,7 @@ export const AllSubmissions: React.FC<AllSubmissionsProps> = ({ onViewResults })
                                         onClick={() => onViewResults(sub)}
                                         className="w-full h-10 text-sm"
                                     >
-                                        {isGraded ? 'View Detailed Results' : 'Check Status / Grade Instantly'}
+                                        {isFailed ? 'View Error / Retry' : isGraded ? 'View Detailed Results' : 'Check Status / Grade Instantly'}
                                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
                                     </RainbowButton>
                                 </div>

@@ -1,6 +1,6 @@
 
 import React, { useCallback, useMemo, useState, useRef } from 'react';
-import { QuestionPaper, StudentSubmission, GradedResult } from '../../types';
+import { QuestionPaper, StudentSubmission, GradedResult, GradingStatus } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import { FileUpload } from '../../components/FileUpload';
 import { GradingInterface } from './GradingInterface';
@@ -18,6 +18,12 @@ interface GradingDashboardProps {
 
 type UploadMode = 'hidden' | 'choose' | 'individual' | 'bulk';
 
+// Helper for promise cancellation
+const waitForSignal = (signal: AbortSignal) => new Promise<never>((_, reject) => {
+    if (signal.aborted) reject(new Error("ABORTED"));
+    signal.addEventListener('abort', () => reject(new Error("ABORTED")), { once: true });
+});
+
 export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initialSubmissionId, onBack }) => {
   const { studentSubmissions, addStudentSubmission, updateSubmission } = useAppContext();
   const toast = useToast();
@@ -33,6 +39,8 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
   
   // Lock to prevent double grading triggers (e.g. from StrictMode effects or rapid clicks)
   const gradingLocks = useRef<Set<string>>(new Set());
+  // Controllers for aborting grading
+  const gradingControllers = useRef<Map<string, AbortController>>(new Map());
 
   const submissionsForThisPaper = useMemo(() => 
     studentSubmissions.filter(s => s.paperId === paper.id)
@@ -41,6 +49,38 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
   );
 
   const gradingCount = submissionsForThisPaper.filter(s => s.isGrading).length;
+
+  // Calculate Header Statistics
+  const stats = useMemo(() => {
+      const total = submissionsForThisPaper.length;
+      const graded = submissionsForThisPaper.filter(s => s.gradedResults);
+      const gradedCount = graded.length;
+      const totalPossible = paper.rubric.reduce((acc, q) => acc + q.totalMarks, 0);
+      
+      let avg = 0;
+      if (gradedCount > 0 && totalPossible > 0) {
+          const sumPct = graded.reduce((acc, s) => {
+              const score = s.gradedResults!.reduce((a, r) => a + r.marksAwarded, 0);
+              return acc + (score / totalPossible);
+          }, 0);
+          avg = Math.round((sumPct / gradedCount) * 100);
+      }
+      return { total, gradedCount, avg };
+  }, [submissionsForThisPaper, paper.rubric]);
+
+  const handleCancelGrading = useCallback((submissionId: string) => {
+      const controller = gradingControllers.current.get(submissionId);
+      if (controller) {
+          controller.abort();
+      }
+  }, []);
+
+  const handleCancelAllGrading = useCallback(() => {
+      if (gradingControllers.current.size > 0) {
+          gradingControllers.current.forEach(c => c.abort());
+          toast.info("Stopping all active grading processes...");
+      }
+  }, [toast]);
 
   const handleGradeSubmission = useCallback(async (submissionId: string, directSubmission?: StudentSubmission) => {
     // Check lock to prevent duplicate calls
@@ -59,11 +99,13 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
     // Check state just in case
     if (submission.isGrading) return;
 
-    // Set lock
+    // Set lock & Controller
     gradingLocks.current.add(submissionId);
+    const controller = new AbortController();
+    gradingControllers.current.set(submissionId, controller);
     
     // Optimistic update
-    updateSubmission({ ...submission, isGrading: true });
+    updateSubmission({ ...submission, isGrading: true, gradingStatus: GradingStatus.GRADING });
 
     try {
         // Validation for demo mode
@@ -74,7 +116,11 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
         const startTime = performance.now();
         const gradedResults: GradedResult[] = [];
         for (const rubricItem of paper.rubric) {
-            const result = await gradeAnswerSheet(submission.file || submission.previewUrl, rubricItem);
+            // Race grading call against abort signal for immediate cancellation
+            const result = await Promise.race([
+                gradeAnswerSheet(submission.file || submission.previewUrl, rubricItem),
+                waitForSignal(controller.signal)
+            ]);
             
             // CRITICAL: Check for Fatal Validation Error from AI
             if (result.feedback.includes("FATAL_ERROR: INVALID_IMAGE_CONTENT")) {
@@ -99,18 +145,34 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
             ...submission, 
             isGrading: false, 
             gradedResults,
-            gradingDuration
+            gradingDuration,
+            gradingStatus: GradingStatus.SUCCESS
         });
         toast.success("Grading complete!");
         triggerConfetti();
 
     } catch (error: any) {
-        console.error("Grading failed:", error);
-        toast.error(error.message || "Grading failed.");
-        updateSubmission({ ...submission, isGrading: false });
+        if (error.message === "ABORTED") {
+            console.log("Grading aborted for", submissionId);
+            toast.info("Grading stopped.");
+            updateSubmission({
+                ...submission,
+                isGrading: false,
+                gradingStatus: GradingStatus.IDLE
+            });
+        } else {
+            console.error("Grading failed:", error);
+            toast.error(error.message || "Grading failed.");
+            updateSubmission({ 
+                ...submission, 
+                isGrading: false, 
+                gradingStatus: GradingStatus.ERROR
+            });
+        }
     } finally {
-        // Release lock
+        // Release lock & controller
         gradingLocks.current.delete(submissionId);
+        gradingControllers.current.delete(submissionId);
     }
   }, [submissionsForThisPaper, updateSubmission, paper.rubric, toast]);
   
@@ -128,7 +190,8 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
         previewUrl,
         submissionDate: new Date(),
         isGrading: false,
-        uploadMethod: 'Individual Upload'
+        uploadMethod: 'Individual Upload',
+        gradingStatus: GradingStatus.IDLE
     };
 
     // 1. Add to Database
@@ -171,7 +234,8 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
                       previewUrl: 'https://placehold.co/600x800/e2e8f0/1e293b?text=External+Doc', 
                       submissionDate: new Date(),
                       isGrading: false,
-                      uploadMethod: 'Bulk Import'
+                      uploadMethod: 'Bulk Import',
+                      gradingStatus: GradingStatus.IDLE
                   };
                   await addStudentSubmission(newSubmission);
                   count++;
@@ -300,6 +364,7 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
               hasNext={submissionsForThisPaper.findIndex(s => s.id === activeSubmissionId) < submissionsForThisPaper.length - 1}
               hasPrev={submissionsForThisPaper.findIndex(s => s.id === activeSubmissionId) > 0}
               onGradeSubmission={handleGradeSubmission}
+              onCancelGrading={handleCancelGrading}
               onGradeOverride={handleGradeOverride}
               onRegradeQuestion={handleRegradeQuestion}
               autoStart={autoGradeTrigger}
@@ -310,13 +375,38 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
   // --- Render: Dashboard List View ---
   return (
     <div className="space-y-6">
-        <div className="flex justify-between items-start">
+        <div className="flex flex-col md:flex-row justify-between items-start gap-4">
             <div>
-                <button onClick={onBack} className="text-sm text-blue-600 hover:underline mb-2">&larr; Back to all papers</button>
-                <h2 className="text-3xl font-bold text-gray-800">Grading Dashboard</h2>
-                <p className="mt-1 text-lg text-gray-600">{paper.title}</p>
+                <button onClick={onBack} className="text-sm text-blue-600 hover:underline mb-3 flex items-center gap-1">
+                    &larr; Back to all papers
+                </button>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Grading Dashboard</p>
+                <h2 className="text-3xl font-bold text-gray-800">{paper.title}</h2>
+                
+                <div className="flex flex-wrap items-center gap-4 mt-4 text-sm">
+                    {paper.subject && (
+                        <span className="px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-xs font-bold border border-indigo-200">
+                            {paper.subject}
+                        </span>
+                    )}
+                    
+                    <div className="flex items-center gap-2 text-gray-600 bg-white px-3 py-1.5 rounded-full border border-gray-200 shadow-sm">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                        <span><span className="font-bold text-gray-900">{stats.total}</span> Submissions</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-gray-600 bg-white px-3 py-1.5 rounded-full border border-gray-200 shadow-sm">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                        <span><span className="font-bold text-gray-900">{stats.gradedCount}</span> Graded</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-gray-600 bg-white px-3 py-1.5 rounded-full border border-gray-200 shadow-sm">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+                        <span>Avg Score: <span className={`font-bold ${stats.avg >= 80 ? 'text-green-600' : stats.avg >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>{stats.avg}%</span></span>
+                    </div>
+                </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 self-start mt-8 md:mt-0">
                  <RainbowButton 
                     onClick={() => setUploadMode(uploadMode === 'hidden' ? 'choose' : 'hidden')}
                     className="h-10 px-4 text-sm"
@@ -329,11 +419,19 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
 
         {/* Grading Status Banner */}
         {gradingCount > 0 && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3 animate-slide-up shadow-sm">
-                <Spinner size="sm" />
-                <p className="text-blue-700 font-medium text-sm">
-                    AI is currently grading {gradingCount} submission{gradingCount !== 1 ? 's' : ''}. This requires complex reasoning and may take a moment.
-                </p>
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between gap-3 animate-slide-up shadow-sm">
+                <div className="flex items-center gap-3">
+                    <Spinner size="sm" />
+                    <p className="text-blue-700 font-medium text-sm">
+                        AI is currently grading {gradingCount} submission{gradingCount !== 1 ? 's' : ''}. This requires complex reasoning and may take a moment.
+                    </p>
+                </div>
+                <button 
+                    onClick={handleCancelAllGrading} 
+                    className="text-xs font-bold text-red-600 bg-white border border-red-200 px-3 py-1.5 rounded hover:bg-red-50 transition-colors"
+                >
+                    Stop Grading
+                </button>
             </div>
         )}
 
@@ -444,6 +542,7 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
                                 const awarded = sub.gradedResults?.reduce((acc, r) => acc + r.marksAwarded, 0) || 0;
                                 const total = paper.rubric.reduce((acc, r) => acc + r.totalMarks, 0);
                                 const percentage = total > 0 ? Math.round((awarded / total) * 100) : 0;
+                                const isFailed = sub.gradingStatus === GradingStatus.ERROR;
 
                                 return (
                                     <tr 
@@ -484,6 +583,10 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
                                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 animate-pulse">
                                                     {sub.gradedResults ? 'Regrading...' : 'Grading...'}
                                                 </span>
+                                            ) : isFailed ? (
+                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                                    Failed
+                                                </span>
                                             ) : hasDispute ? (
                                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
                                                     Disputed
@@ -517,6 +620,12 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
                                             <button 
                                                 onClick={(e) => {
                                                     e.stopPropagation();
+                                                    // If grading, offer abort
+                                                    if (sub.isGrading) {
+                                                        handleCancelGrading(sub.id);
+                                                        return;
+                                                    }
+                                                    
                                                     setActiveSubmissionId(sub.id);
                                                     // Only auto-trigger if not already graded and not currently grading
                                                     if (!isGraded && !sub.isGrading) {
@@ -525,9 +634,9 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
                                                         setAutoGradeTrigger(false);
                                                     }
                                                 }}
-                                                className="text-blue-600 hover:text-blue-900 font-medium text-sm hover:underline"
+                                                className={`font-medium text-sm hover:underline ${sub.isGrading ? 'text-red-600 hover:text-red-800' : 'text-blue-600 hover:text-blue-900'}`}
                                             >
-                                                {isGraded ? 'Review / Edit' : 'Grade Now'}
+                                                {sub.isGrading ? 'Cancel' : isFailed ? 'Retry Grading' : isGraded ? 'Review / Edit' : 'Grade Now'}
                                             </button>
                                         </td>
                                     </tr>

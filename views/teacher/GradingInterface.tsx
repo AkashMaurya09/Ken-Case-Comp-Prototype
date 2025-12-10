@@ -13,6 +13,7 @@ interface GradingInterfaceProps {
     hasNext: boolean;
     hasPrev: boolean;
     onGradeSubmission: (id: string) => Promise<void>;
+    onCancelGrading?: (id: string) => void;
     onRegradeQuestion: (submissionId: string, questionId: string) => Promise<void>;
     onGradeOverride: (
         submissionId: string, 
@@ -36,6 +37,7 @@ export const GradingInterface: React.FC<GradingInterfaceProps> = ({
     hasNext,
     hasPrev,
     onGradeSubmission,
+    onCancelGrading,
     onRegradeQuestion,
     onGradeOverride,
     autoStart
@@ -332,9 +334,12 @@ export const GradingInterface: React.FC<GradingInterfaceProps> = ({
                             </button>
                         )
                     ) : (
-                        <button disabled className="bg-blue-100 text-blue-400 px-4 py-2 rounded-lg text-sm font-bold cursor-not-allowed flex items-center gap-2">
-                            <Spinner size="sm" />
-                            Grading...
+                        <button 
+                            onClick={() => onCancelGrading && onCancelGrading(submissionId)}
+                            className="bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-red-100 transition-colors"
+                        >
+                            <span className="animate-spin h-3 w-3 border-2 border-red-500 border-t-transparent rounded-full mr-1"></span>
+                            Stop Grading
                         </button>
                     )}
                 </div>
@@ -380,6 +385,12 @@ export const GradingInterface: React.FC<GradingInterfaceProps> = ({
                                 <Spinner size="lg" />
                                 <p className="text-lg font-medium animate-pulse text-blue-600">AI is analyzing the answer sheet...</p>
                                 <p className="text-sm max-w-xs text-center text-gray-400">Identifying handwriting, checking logic, and verifying Error Carried Forward.</p>
+                                <button 
+                                    onClick={() => onCancelGrading && onCancelGrading(submissionId)}
+                                    className="mt-4 px-4 py-2 bg-white border border-gray-300 rounded text-sm font-medium text-gray-600 hover:text-red-600 hover:border-red-300 transition-colors"
+                                >
+                                    Cancel
+                                </button>
                             </div>
                         ) : (
                             <div className="space-y-6 pb-12">

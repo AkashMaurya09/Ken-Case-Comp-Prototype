@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { StudentSubmission, QuestionPaper, GradedResult } from '../../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { StudentSubmission, QuestionPaper, GradedResult, GradingStatus } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import { gradeAnswerSheet } from '../../services/geminiService';
 import { useToast } from '../../context/ToastContext';
@@ -143,11 +143,18 @@ const DisputeModal: React.FC<DisputeModalProps> = ({ result, questionText, onClo
     );
 };
 
+// Helper for promise cancellation
+const waitForSignal = (signal: AbortSignal) => new Promise<never>((_, reject) => {
+    if (signal.aborted) reject(new Error("ABORT_GRADING"));
+    signal.addEventListener('abort', () => reject(new Error("ABORT_GRADING")), { once: true });
+});
+
 export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPaper }) => {
     const { updateSubmission } = useAppContext();
     const { gradedResults } = submission;
     const toast = useToast();
     const [isGrading, setIsGrading] = useState(false);
+    const abortControllerRef = useRef<AbortController | null>(null);
     
     // Progress State
     const [gradingProgress, setGradingProgress] = useState(0);
@@ -189,6 +196,14 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
         setIsGrading(true);
         setGradingProgress(0);
         setGradingStatus("Preparing document for analysis...");
+        
+        abortControllerRef.current = new AbortController();
+        
+        // Optimistic status update
+        await updateSubmission({
+            ...submission,
+            gradingStatus: GradingStatus.GRADING
+        });
 
         try {
              // In demo mode with local blobs, we need to ensure we have a valid source
@@ -197,9 +212,7 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
              // Validate source for demo
              if (!submission.file && submission.previewUrl.includes('placehold.co')) {
                  console.warn(`[StudentPortal] Grading blocked: Placeholder image detected.`);
-                 toast.error("Cannot grade this placeholder submission. Please upload a real file.");
-                 setIsGrading(false);
-                 return;
+                 throw new Error("Cannot grade this placeholder submission. Please upload a real file.");
              }
 
              const newGradedResults: GradedResult[] = [];
@@ -214,11 +227,25 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
                  setGradingProgress(Math.round((i / totalQuestions) * 100));
 
                  console.log(`[StudentPortal] Grading Question ID: ${rubricItem.id}`);
-                 const result = await gradeAnswerSheet(source, rubricItem);
+                 
+                 // Race the grading call against the abort signal
+                 const result = await Promise.race([
+                     gradeAnswerSheet(source, rubricItem),
+                     waitForSignal(abortControllerRef.current!.signal)
+                 ]);
+                 
+                 if (result.feedback.includes("FATAL_ERROR: INVALID_IMAGE_CONTENT")) {
+                     throw new Error("Invalid Document: The AI detected a non-academic image.");
+                 }
+
                  newGradedResults.push(result);
                  
-                 // Small artificial delay to let the user see the progress bar moving (optional, improves UX feel)
-                 await new Promise(r => setTimeout(r, 500));
+                 // Small artificial delay to let the user see the progress bar moving
+                 // Also race this delay against abort signal
+                 await Promise.race([
+                     new Promise(r => setTimeout(r, 500)),
+                     waitForSignal(abortControllerRef.current!.signal)
+                 ]);
              }
 
              setGradingStatus("Finalizing results...");
@@ -228,18 +255,41 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
              await updateSubmission({
                  ...submission,
                  gradedResults: newGradedResults,
-                 isGrading: false
+                 isGrading: false,
+                 gradingStatus: GradingStatus.SUCCESS
              });
              console.log(`[StudentPortal] Submission updated successfully.`);
              toast.success("Grading complete! View your detailed results below.");
              triggerConfetti();
 
         } catch (error: any) {
-            console.error("[StudentPortal] Instant grading failed:", error);
-            toast.error(error.message || "Failed to grade submission.");
+            if (error.message === "ABORT_GRADING") {
+                console.log("[StudentPortal] Grading aborted by user.");
+                toast.info("Grading process cancelled.");
+                await updateSubmission({
+                    ...submission,
+                    isGrading: false,
+                    gradingStatus: GradingStatus.IDLE
+                });
+            } else {
+                console.error("[StudentPortal] Instant grading failed:", error);
+                toast.error(error.message || "Failed to grade submission.");
+                await updateSubmission({
+                    ...submission,
+                    isGrading: false,
+                    gradingStatus: GradingStatus.ERROR
+                });
+            }
         } finally {
             setIsGrading(false);
             setGradingProgress(0);
+            abortControllerRef.current = null;
+        }
+    };
+
+    const handleAbort = () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
         }
     };
 
@@ -258,23 +308,40 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
         </div>
     );
 
+    // Render logic for when results are NOT available (including errors)
     if (!gradedResults) {
         return (
             <div className="max-w-6xl mx-auto space-y-8">
-                {/* Success Header */}
-                <div className="bg-white rounded-2xl shadow-sm border border-green-100 p-8 text-center relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-green-400 to-emerald-500"></div>
-                    <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <svg className="w-10 h-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                        </svg>
+                {/* Success Header or Error State */}
+                {submission.gradingStatus === GradingStatus.ERROR ? (
+                    <div className="bg-white rounded-2xl shadow-sm border border-red-100 p-8 text-center relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-red-400 to-rose-500"></div>
+                        <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <svg className="w-10 h-10 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                        </div>
+                        <h1 className="text-3xl font-extrabold text-gray-900 mb-2">Grading Failed</h1>
+                        <p className="text-lg text-gray-600">
+                            We encountered an issue while analyzing your answer sheet. Please try again or re-upload a clearer image.
+                        </p>
+                        <p className="text-sm text-gray-400 mt-2">Submission ID: {submission.id}</p>
                     </div>
-                    <h1 className="text-3xl font-extrabold text-gray-900 mb-2">Submission Successful!</h1>
-                    <p className="text-lg text-gray-600">
-                        Your answer sheet for <span className="font-bold text-gray-900">{questionPaper.title}</span> has been received.
-                    </p>
-                    <p className="text-sm text-gray-400 mt-2">Submission ID: {submission.id}</p>
-                </div>
+                ) : (
+                    <div className="bg-white rounded-2xl shadow-sm border border-green-100 p-8 text-center relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-green-400 to-emerald-500"></div>
+                        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <svg className="w-10 h-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
+                        <h1 className="text-3xl font-extrabold text-gray-900 mb-2">Submission Successful!</h1>
+                        <p className="text-lg text-gray-600">
+                            Your answer sheet for <span className="font-bold text-gray-900">{questionPaper.title}</span> has been received.
+                        </p>
+                        <p className="text-sm text-gray-400 mt-2">Submission ID: {submission.id}</p>
+                    </div>
+                )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* Left Column: Actions & Status */}
@@ -291,7 +358,10 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
                                     AI Instant Grading
                                 </h3>
                                 <p className="text-blue-100 mb-8 leading-relaxed">
-                                    Don't wait for manual review. Our AI can analyze your submission against the rubric and provide detailed feedback instantly.
+                                    {submission.gradingStatus === GradingStatus.ERROR ? 
+                                        "Grading failed previously. You can attempt to grade again instantly." :
+                                        "Don't wait for manual review. Our AI can analyze your submission against the rubric and provide detailed feedback instantly."
+                                    }
                                 </p>
 
                                 {!isGrading ? (
@@ -299,7 +369,7 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
                                         onClick={handleInstantGrade}
                                         className="w-full"
                                     >
-                                        <span>Get My Grade Now</span>
+                                        <span>{submission.gradingStatus === GradingStatus.ERROR ? "Retry Grading" : "Get My Grade Now"}</span>
                                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
                                     </RainbowButton>
                                 ) : (
@@ -314,7 +384,15 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
                                                 style={{ width: `${gradingProgress}%` }}
                                             ></div>
                                         </div>
-                                        <p className="text-xs text-blue-200 mt-4 text-center animate-pulse">Analyzing steps & keywords...</p>
+                                        <div className="flex justify-between items-center mt-4">
+                                            <p className="text-xs text-blue-200 animate-pulse">Analyzing steps & keywords...</p>
+                                            <button 
+                                                onClick={handleAbort}
+                                                className="text-xs font-bold text-white bg-red-500/80 hover:bg-red-600/90 px-3 py-1 rounded transition-colors"
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -397,6 +475,12 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
                         <div className="w-full bg-gray-200 rounded-full h-2 mt-4 overflow-hidden">
                             <div className="bg-blue-600 h-2 rounded-full transition-all duration-300" style={{ width: `${gradingProgress}%` }}></div>
                         </div>
+                        <button 
+                            onClick={handleAbort}
+                            className="mt-6 text-sm font-bold text-red-600 hover:bg-red-50 px-4 py-2 rounded-lg transition-colors border border-transparent hover:border-red-100"
+                        >
+                            Cancel Grading
+                        </button>
                     </div>
                 </div>
             )}

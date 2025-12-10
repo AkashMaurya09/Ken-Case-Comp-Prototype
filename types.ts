@@ -34,6 +34,12 @@ export interface QuestionPaper {
   createdAt: Date;
 }
 
+export enum GradingStatus {
+    IDLE,
+    GRADING,
+    SUCCESS,
+    ERROR
+}
 
 export interface StudentSubmission {
   id: string;
@@ -46,6 +52,7 @@ export interface StudentSubmission {
   isGrading: boolean;
   uploadMethod?: 'Individual Upload' | 'Bulk Import';
   gradingDuration?: number; // Duration in milliseconds
+  gradingStatus?: GradingStatus;
 }
 
 export interface GradedResult {
@@ -72,13 +79,6 @@ export interface GradedResult {
       marksAwarded: number;
       maxMarks: number;
   }[];
-}
-
-export enum GradingStatus {
-    IDLE,
-    GRADING,
-    SUCCESS,
-    ERROR
 }
 
 // This type is used during the paper creation process

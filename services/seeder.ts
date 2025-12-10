@@ -1,6 +1,6 @@
 
 import { LocalDB } from './indexedDBService';
-import { RubricItem, QuestionPaper, StudentSubmission, GradedResult } from '../types';
+import { RubricItem, QuestionPaper, StudentSubmission, GradedResult, GradingStatus } from '../types';
 
 // Helper to generate a random number following a normal distribution (approx)
 const randn_bm = (): number => {
@@ -181,6 +181,59 @@ const MASTER_PAPERS: QuestionPaper[] = [
     }
 ];
 
+// --- MOCK SUGGESTIONS FOR ANALYTICS ---
+const MOCK_SUGGESTIONS: Record<string, string[]> = {
+    'Physics': [
+        "Review Newton's second law (F=ma) application.",
+        "Check units for force calculation (Newtons).",
+        "Kinematics equations mixed up - verify formula.",
+        "Vector direction error in resultant calculation.",
+        "Confused scalar vs vector definitions.",
+        "Energy conservation principle misapplied.",
+        "Work done calculation sign error.",
+        "Centripetal force missing in circular motion.",
+        "Thermodynamics efficiency calculation error."
+    ],
+    'Mathematics': [
+        "Chain rule application error in differentiation.",
+        "Arithmetic mistake in final step calculation.",
+        "Check limit properties for indeterminate forms.",
+        "Factorization error in numerator.",
+        "Sign error in algebraic manipulation.",
+        "Domain and range mismatch in function.",
+        "Integration by parts formula incorrect.",
+        "Trigonometric identity misapplied (sin^2 + cos^2 = 1)."
+    ],
+    'Computer Science': [
+        "Infinite loop detected - check condition.",
+        "Function missing return statement.",
+        "Edge case for empty list not handled.",
+        "Syntax error: indentation issue.",
+        "Variable naming convention inconsistency.",
+        "Algorithmic complexity is too high (nested loops).",
+        "Incorrect data structure usage (List vs Set).",
+        "Object initialization missing in constructor."
+    ],
+    'Chemistry': [
+        "Reaction mechanism arrow direction wrong.",
+        "Stereochemistry inversion missed in SN2.",
+        "Stoichiometry unbalanced in equation.",
+        "Incorrect chemical terminology for bond type.",
+        "Atomic configuration for valence electrons incorrect.",
+        "Equilibrium constant expression error.",
+        "Periodic trend for electronegativity reversed."
+    ],
+    'History': [
+        "Causal analysis lacks depth on economic factors.",
+        "Chronological order of events is confused.",
+        "Historical context of the era missing.",
+        "Key figure misidentified in treaty signing.",
+        "Primary source evidence not cited.",
+        "Ideological difference between parties unclear.",
+        "Geopolitical impact of borders ignored."
+    ]
+};
+
 // --- GENERATORS ---
 
 // Exported so it can be used by Analytics.tsx for local mocking
@@ -205,6 +258,9 @@ export const generateClassSubmissions = (
     ];
 
     const submissions: StudentSubmission[] = [];
+
+    // Pre-calculate suggestion pool for this paper's subject
+    const subjectSuggestions = MOCK_SUGGESTIONS[paper.subject || ''] || ["Review key concepts and definitions."];
 
     for (let i = 0; i < count; i++) {
         const studentName = students[i % students.length];
@@ -252,11 +308,18 @@ export const generateClassSubmissions = (
                 // SAFETY CHECK: Clamp to Total Marks
                 const finalMarks = Math.min(analysisTotal, q.totalMarks);
 
+                // Pick a random specific suggestion if marks were lost
+                let improvements: string[] = [];
+                if (finalMarks < q.totalMarks) {
+                    const randomSug = subjectSuggestions[Math.floor(Math.random() * subjectSuggestions.length)];
+                    improvements.push(randomSug);
+                }
+
                 return {
                     questionId: q.id,
                     marksAwarded: finalMarks, 
                     feedback: finalMarks === q.totalMarks ? "Excellent work. All steps followed correctly." : "Good attempt, but missed some key details as noted in the breakdown.",
-                    improvementSuggestions: finalMarks < q.totalMarks ? ["Review key concepts and definitions."] : [],
+                    improvementSuggestions: improvements,
                     disputed: isDisputed,
                     disputeReason: isDisputed ? "I believe I explained the concept correctly in the second paragraph." : undefined,
                     stepAnalysis: stepAnalysis,
@@ -277,7 +340,8 @@ export const generateClassSubmissions = (
             submissionDate: submissionDate,
             isGrading: false,
             uploadMethod: Math.random() > 0.5 ? 'Individual Upload' : 'Bulk Import',
-            gradedResults
+            gradedResults,
+            gradingStatus: gradedResults ? GradingStatus.SUCCESS : GradingStatus.IDLE
         });
     }
     return submissions;
@@ -373,7 +437,8 @@ export const getMockStudentData = () => {
             submissionDate: date,
             isGrading: false,
             uploadMethod: 'Individual Upload',
-            gradedResults
+            gradedResults,
+            gradingStatus: gradedResults ? GradingStatus.SUCCESS : GradingStatus.IDLE
         });
     });
 

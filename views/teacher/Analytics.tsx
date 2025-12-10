@@ -1,5 +1,5 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { getMockAnalyticsData } from '../../services/seeder';
 import {
@@ -97,6 +97,7 @@ const ChartCard: React.FC<{title: string; children: React.ReactNode;}> = ({title
 
 export const Analytics: React.FC = () => {
     const { questionPapers: realPapers, studentSubmissions: realSubmissions } = useAppContext();
+    const [selectedSubject, setSelectedSubject] = useState<string>('All Subjects');
 
     // Auto-generate mock data locally if real data is empty for better visualization
     const mockData = useMemo(() => {
@@ -107,8 +108,26 @@ export const Analytics: React.FC = () => {
     }, [realSubmissions.length]);
 
     const usingMockData = !!mockData;
-    const questionPapers = usingMockData ? mockData!.questionPapers : realPapers;
-    const studentSubmissions = usingMockData ? mockData!.studentSubmissions : realSubmissions;
+    const allQuestionPapers = usingMockData ? mockData!.questionPapers : realPapers;
+    const allStudentSubmissions = usingMockData ? mockData!.studentSubmissions : realSubmissions;
+
+    // --- Dynamic Filters ---
+    const subjects = useMemo(() => {
+        const subSet = new Set(allQuestionPapers.map(p => p.subject).filter(Boolean) as string[]);
+        return ['All Subjects', ...Array.from(subSet)];
+    }, [allQuestionPapers]);
+
+    // --- Filtering Logic ---
+    const { questionPapers, studentSubmissions } = useMemo(() => {
+        if (selectedSubject === 'All Subjects') {
+            return { questionPapers: allQuestionPapers, studentSubmissions: allStudentSubmissions };
+        }
+        const filteredPapers = allQuestionPapers.filter(p => p.subject === selectedSubject);
+        const filteredPaperIds = new Set(filteredPapers.map(p => p.id));
+        const filteredSubmissions = allStudentSubmissions.filter(s => filteredPaperIds.has(s.paperId));
+        return { questionPapers: filteredPapers, studentSubmissions: filteredSubmissions };
+    }, [selectedSubject, allQuestionPapers, allStudentSubmissions]);
+
 
     // --- Aggregations ---
     const gradedSubmissions = studentSubmissions.filter(s => s.gradedResults);
@@ -159,27 +178,135 @@ export const Analytics: React.FC = () => {
         };
     }).sort((a,b) => b.date.getTime() - a.date.getTime());
 
-    // Chart Data Preparation (Performance Trend)
+    // Chart Data Preparation (Performance Trend by Assessment)
     const trendData = useMemo(() => {
-        const dataMap: {[key: string]: {sum: number, count: number}} = {};
-        gradedSubmissions.forEach(s => {
-            const dateStr = s.submissionDate.toLocaleDateString();
-            const p = questionPapers.find(qp => qp.id === s.paperId);
-            if (p && s.gradedResults) {
-                const earned = s.gradedResults.reduce((a, b) => a + b.marksAwarded, 0);
-                const total = p.rubric.reduce((a, b) => a + b.totalMarks, 0);
-                if (total > 0) {
-                    if (!dataMap[dateStr]) dataMap[dateStr] = { sum: 0, count: 0 };
-                    dataMap[dateStr].sum += (earned / total) * 100;
-                    dataMap[dateStr].count++;
+        // Group by Assessment instead of Date
+        const data = questionPapers.map(paper => {
+            // Get all graded submissions for this paper
+            const paperSubmissions = gradedSubmissions.filter(s => s.paperId === paper.id);
+            
+            if (paperSubmissions.length === 0) return null;
+
+            let totalPct = 0;
+            paperSubmissions.forEach(s => {
+                if (s.gradedResults) {
+                    const earned = s.gradedResults.reduce((a, b) => a + b.marksAwarded, 0);
+                    const max = paper.rubric.reduce((a, b) => a + b.totalMarks, 0);
+                    if (max > 0) {
+                        totalPct += (earned / max) * 100;
+                    }
                 }
+            });
+
+            return {
+                // Shorten title for axis
+                name: paper.title.length > 15 ? paper.title.substring(0, 15) + '...' : paper.title,
+                fullTitle: paper.title,
+                score: Math.round(totalPct / paperSubmissions.length),
+                date: paper.createdAt
+            };
+        }).filter((item): item is NonNullable<typeof item> => item !== null);
+
+        // Sort by creation date to show chronological progression of assessments
+        return data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    }, [questionPapers, gradedSubmissions]);
+
+    // --- Mistake Analysis Logic ---
+    const mistakeData = useMemo(() => {
+        const counts: Record<string, number> = {};
+
+        // Subject-specific Concept Mapping
+        const subjectMappings: Record<string, Record<string, string[]>> = {
+            'Physics': {
+                'Newton\'s Laws & Forces': ['newton', 'force', 'mass', 'acceleration', 'f=ma', 'law', 'inertia', 'free body'],
+                'Kinematics (Motion)': ['velocity', 'speed', 'displacement', 'time', 'motion', 'kinematic', 'projectile', 'trajectory'],
+                'Vectors & Scalars': ['vector', 'scalar', 'magnitude', 'direction', 'component', 'resultant'],
+                'Energy & Work': ['energy', 'work', 'power', 'conservation', 'potential', 'kinetic', 'joule'],
+                'Units & Conversion': ['unit', 'si', 'conversion', 'meter', 'second', 'kg', 'dimensional'],
+                'Circular Motion & Gravity': ['centripetal', 'gravity', 'orbit', 'radius', 'period', 'angular'],
+                'Thermodynamics': ['heat', 'temperature', 'entropy', 'thermodynamic', 'cycle', 'efficiency']
+            },
+            'Mathematics': {
+                'Differentiation Rules': ['derivative', 'power rule', 'chain rule', 'differentiation', 'slope', 'rate of change', 'product rule', 'quotient rule'],
+                'Limits & Continuity': ['limit', 'continuity', 'indeterminate', 'approach', 'undefined', 'asymptote'],
+                'Algebraic Manipulation': ['algebra', 'factor', 'expand', 'simplify', 'equation', 'solve', 'expression', 'polynomial'],
+                'Arithmetic Precision': ['calculation', 'sign', 'arithmetic', 'addition', 'subtraction', 'multiplication', 'decimal'],
+                'Function Application': ['function', 'domain', 'range', 'substitution', 'inverse', 'composition'],
+                'Integration Techniques': ['integral', 'antiderivative', 'area under curve', 'substitution', 'parts'],
+                'Trigonometry': ['sin', 'cos', 'tan', 'identity', 'angle', 'radian', 'triangle']
+            },
+            'Computer Science': {
+                'Loop Logic & Iteration': ['loop', 'range', 'iteration', 'for', 'while', 'nested', 'infinite'],
+                'Function Implementation': ['function', 'return', 'parameter', 'argument', 'signature', 'call', 'scope'],
+                'Edge Case Handling': ['edge case', 'empty', 'negative', 'zero', 'bound', 'null', 'none', 'input validation'],
+                'Syntax & Semantics': ['syntax', 'indentation', 'type', 'variable', 'name', 'declaration', 'compilation'],
+                'Algorithmic Logic': ['algorithm', 'logic', 'efficiency', 'step', 'condition', 'complexity', 'optimization'],
+                'Data Structures': ['list', 'array', 'dictionary', 'map', 'set', 'queue', 'stack', 'tree'],
+                'Object-Oriented Concepts': ['class', 'object', 'inheritance', 'method', 'instance', 'constructor']
+            },
+            'Chemistry': {
+                'Reaction Mechanisms': ['mechanism', 'arrow', 'attack', 'nucleophile', 'electrophile', 'substitution', 'elimination'],
+                'Stereochemistry': ['inversion', 'chiral', 'stereochemistry', 'configuration', 'isomer', 'optical', 'enantiomer'],
+                'Stoichiometry': ['balance', 'equation', 'mole', 'ratio', 'yield', 'reactant', 'product'],
+                'Chemical Terminology': ['term', 'definition', 'name', 'structure', 'bond', 'orbital'],
+                'Atomic Structure': ['proton', 'neutron', 'electron', 'shell', 'isotope', 'configuration'],
+                'Equilibrium & Kinetics': ['rate', 'constant', 'equilibrium', 'le chatelier', 'catalyst', 'activation energy'],
+                'Periodic Trends': ['electronegativity', 'radius', 'ionization', 'trend', 'group', 'period']
+            },
+            'History': {
+                'Causal Analysis': ['cause', 'reason', 'trigger', 'led to', 'consequence', 'effect', 'impact'],
+                'Chronological Accuracy': ['timeline', 'date', 'order', 'when', 'year', 'sequence'],
+                'Historical Context': ['context', 'background', 'environment', 'society', 'culture', 'era'],
+                'Key Figures & Terms': ['term', 'figure', 'person', 'treaty', 'alliance', 'empire', 'leader'],
+                'Evidence & Sourcing': ['source', 'evidence', 'primary', 'secondary', 'bias', 'perspective'],
+                'Ideologies': ['communism', 'capitalism', 'socialism', 'fascism', 'democracy', 'nationalism'],
+                'Geopolitics': ['geography', 'border', 'territory', 'resources', 'strategic', 'location']
             }
+        };
+
+        const genericMapping: Record<string, string[]> = {
+             'Conceptual Understanding': ['concept', 'understand', 'logic', 'theory', 'principle'],
+             'Calculation/Procedural': ['calc', 'arithmetic', 'step', 'method', 'process'],
+             'Incomplete Answers': ['missing', 'finish', 'incomplete', 'partial'],
+             'Formatting & Units': ['format', 'unit', 'presentation', 'notation']
+        };
+
+        gradedSubmissions.forEach(s => {
+            const paper = allQuestionPapers.find(p => p.id === s.paperId);
+            const subject = paper?.subject || 'Generic';
+            
+            // Determine which mapping to use based on subject
+            let mapping = subjectMappings[subject];
+            
+            // Fallback: Try partial match or generic
+            if (!mapping) {
+                const foundKey = Object.keys(subjectMappings).find(k => subject.includes(k));
+                mapping = foundKey ? subjectMappings[foundKey] : genericMapping;
+            }
+
+            s.gradedResults?.forEach(r => {
+                r.improvementSuggestions.forEach(suggestion => {
+                    const lowerSug = suggestion.toLowerCase();
+                    
+                    for (const [category, keywords] of Object.entries(mapping)) {
+                        if (keywords.some(w => lowerSug.includes(w))) {
+                            counts[category] = (counts[category] || 0) + 1;
+                            // Break to categorize suggestion into primary bucket only
+                            break; 
+                        }
+                    }
+                });
+            });
         });
-        return Object.entries(dataMap).map(([date, val]) => ({
-            date,
-            score: Math.round(val.sum / val.count)
-        })).slice(-7); // Last 7 days/entries
-    }, [gradedSubmissions, questionPapers]);
+
+        // Convert to array and filter out zero values
+        return Object.entries(counts)
+            .map(([name, value]) => ({ name, value }))
+            .filter(item => item.value > 0)
+            .sort((a, b) => b.value - a.value) // Sort highest first
+            .slice(0, 7); // Top 7 concepts (when All Subjects is chosen, this automatically picks top 7 across all)
+    }, [gradedSubmissions, allQuestionPapers]);
+
 
     const colors = ['bg-orange-100 text-orange-600', 'bg-blue-100 text-blue-600', 'bg-purple-100 text-purple-600', 'bg-pink-100 text-pink-600'];
 
@@ -200,16 +327,19 @@ export const Analytics: React.FC = () => {
                         <option>This Year</option>
                     </select>
                     
-                    <select className="bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg focus:ring-blue-500 focus:border-blue-500 block px-4 py-2.5 shadow-sm outline-none cursor-pointer hover:border-gray-300 transition-colors">
-                        <option>All Subjects</option>
-                        <option>Physics</option>
-                        <option>Chemistry</option>
-                        <option>Math</option>
+                    <select 
+                        value={selectedSubject}
+                        onChange={(e) => setSelectedSubject(e.target.value)}
+                        className="bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg focus:ring-blue-500 focus:border-blue-500 block px-4 py-2.5 shadow-sm outline-none cursor-pointer hover:border-gray-300 transition-colors"
+                    >
+                        {subjects.map(subject => (
+                            <option key={subject} value={subject}>{subject}</option>
+                        ))}
                     </select>
 
                     <button className="bg-[#F97316] hover:bg-[#EA580C] text-white font-bold rounded-lg text-sm px-5 py-2.5 flex items-center gap-2 shadow-md transition-all hover:shadow-lg transform active:scale-95">
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                         </svg>
                         Export
                     </button>
@@ -280,11 +410,43 @@ export const Analytics: React.FC = () => {
                 )}
             </div>
 
-            {/* Detailed Analytics Section (Legacy Charts - Preserved for functionality) */}
+            {/* Detailed Analytics Section */}
             <div className="pt-8">
                 <h3 className="text-2xl font-bold text-gray-900 mb-6">Detailed Trends</h3>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <ChartCard title="Performance Trend (Last 7 Days)">
+                    <ChartCard title="Concepts Needing Improvement">
+                        {mistakeData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart
+                                    layout="vertical"
+                                    data={mistakeData}
+                                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
+                                    <XAxis type="number" hide />
+                                    <YAxis 
+                                        dataKey="name" 
+                                        type="category" 
+                                        width={160} 
+                                        tick={{fontSize: 11, fill: '#4b5563', fontWeight: 600}} 
+                                        interval={0}
+                                    />
+                                    <Tooltip 
+                                        cursor={{fill: 'transparent'}}
+                                        contentStyle={{borderRadius: '8px', border:'none', boxShadow:'0 4px 6px -1px rgba(0,0,0,0.1)'}} 
+                                    />
+                                    <Bar dataKey="value" fill="#F87171" radius={[0, 4, 4, 0]} barSize={24} name="Students Impacted" />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div className="h-full flex items-center justify-center text-gray-400 text-sm flex-col">
+                                <svg className="w-10 h-10 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                <p>Not enough data to identify concepts.</p>
+                            </div>
+                        )}
+                    </ChartCard>
+
+                    <ChartCard title="Performance Trend (By Assessment)">
                         <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={trendData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                                 <defs>
@@ -294,10 +456,19 @@ export const Analytics: React.FC = () => {
                                     </linearGradient>
                                 </defs>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#9ca3af'}} dy={10} />
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#9ca3af'}} dy={10} />
                                 <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#9ca3af'}} domain={[0, 100]} />
-                                <Tooltip contentStyle={{borderRadius: '8px', border:'none', boxShadow:'0 4px 6px -1px rgba(0,0,0,0.1)'}} />
-                                <Area type="monotone" dataKey="score" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorScore)" />
+                                <Tooltip 
+                                    labelFormatter={(label, payload) => {
+                                        // Show full title in tooltip
+                                        if (payload && payload.length > 0) {
+                                            return payload[0].payload.fullTitle;
+                                        }
+                                        return label;
+                                    }}
+                                    contentStyle={{borderRadius: '8px', border:'none', boxShadow:'0 4px 6px -1px rgba(0,0,0,0.1)'}} 
+                                />
+                                <Area type="monotone" dataKey="score" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorScore)" name="Avg Score" />
                             </AreaChart>
                         </ResponsiveContainer>
                     </ChartCard>

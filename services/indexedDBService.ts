@@ -1,5 +1,5 @@
 
-import { QuestionPaper, StudentSubmission, RubricItem, GradedResult } from '../types';
+import { QuestionPaper, StudentSubmission, RubricItem, GradedResult, GradingStatus } from '../types';
 
 const DB_NAME = 'IntelliGradeDB';
 const DB_VERSION = 1;
@@ -54,6 +54,7 @@ interface StoredSubmission {
     isGrading: boolean;
     uploadMethod?: 'Individual Upload' | 'Bulk Import';
     gradingDuration?: number;
+    gradingStatus?: GradingStatus;
 }
 
 export const LocalDB = {
@@ -159,7 +160,8 @@ export const LocalDB = {
                     gradedResults: submission.gradedResults,
                     isGrading: submission.isGrading,
                     uploadMethod: submission.uploadMethod,
-                    gradingDuration: submission.gradingDuration
+                    gradingDuration: submission.gradingDuration,
+                    gradingStatus: submission.gradingStatus
                 };
 
                 const putReq = store.put(storedData);
@@ -204,7 +206,8 @@ export const LocalDB = {
                         gradedResults: s.gradedResults,
                         isGrading: s.isGrading,
                         uploadMethod: s.uploadMethod,
-                        gradingDuration: s.gradingDuration
+                        gradingDuration: s.gradingDuration,
+                        gradingStatus: s.gradingStatus
                     };
                 });
                 submissions.sort((a, b) => new Date(b.submissionDate).getTime() - new Date(a.submissionDate).getTime());
