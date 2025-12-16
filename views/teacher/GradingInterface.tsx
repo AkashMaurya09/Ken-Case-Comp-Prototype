@@ -23,7 +23,7 @@ interface GradingInterfaceProps {
         newStepAnalysis?: GradedResult['stepAnalysis'],
         newKeywordAnalysis?: GradedResult['keywordAnalysis'],
         teacherComments?: { text: string; timestamp: Date }[]
-    ) => void;
+    ) => Promise<void>;
     autoStart: boolean;
 }
 
@@ -49,6 +49,8 @@ export const GradingInterface: React.FC<GradingInterfaceProps> = ({
     const [expandedAnswers, setExpandedAnswers] = useState<{[key: string]: boolean}>({});
     const [commentInputs, setCommentInputs] = useState<{[key: string]: string}>({});
     const [regradingQuestions, setRegradingQuestions] = useState<Record<string, boolean>>({});
+    const [savingQuestions, setSavingQuestions] = useState<Record<string, boolean>>({}); // Loading state for save buttons
+    const [showStrategyTooltip, setShowStrategyTooltip] = useState(false);
 
     const autoGradeTriggeredRef = React.useRef<string | null>(null);
 
@@ -58,6 +60,7 @@ export const GradingInterface: React.FC<GradingInterfaceProps> = ({
         setExpandedAnswers({});
         setCommentInputs({});
         setRegradingQuestions({});
+        setSavingQuestions({});
     }, [submissionId]);
 
     // Handle Auto-Start Grading
@@ -200,44 +203,52 @@ export const GradingInterface: React.FC<GradingInterfaceProps> = ({
         }));
     };
 
-    const handleSaveChanges = (questionId: string) => {
+    const handleSaveChanges = async (questionId: string) => {
         const result = getResult(questionId);
         if (result) {
-            const newCommentText = commentInputs[questionId];
-            let updatedComments = result.teacherComments ? [...result.teacherComments] : [];
+            setSavingQuestions(prev => ({ ...prev, [questionId]: true }));
             
-            if (newCommentText && newCommentText.trim()) {
-                updatedComments.push({
-                    text: newCommentText.trim(),
-                    timestamp: new Date()
+            try {
+                const newCommentText = commentInputs[questionId];
+                let updatedComments = result.teacherComments ? [...result.teacherComments] : [];
+                
+                if (newCommentText && newCommentText.trim()) {
+                    updatedComments.push({
+                        text: newCommentText.trim(),
+                        timestamp: new Date()
+                    });
+                }
+
+                // Also update legacy resolutionComment for backward compatibility
+                const resolutionComment = newCommentText ? newCommentText.trim() : result.resolutionComment;
+
+                await onGradeOverride(
+                    submission.id,
+                    questionId,
+                    result.marksAwarded,
+                    resolutionComment,
+                    result.stepAnalysis,
+                    result.keywordAnalysis,
+                    updatedComments
+                );
+                
+                // Clear dirty state for this question ONLY after save is complete
+                setEditingResults(prev => {
+                    const newState = { ...prev };
+                    delete newState[questionId];
+                    return newState;
                 });
+                // Clear comment input
+                setCommentInputs(prev => {
+                    const newState = { ...prev };
+                    delete newState[questionId];
+                    return newState;
+                });
+            } catch (error) {
+                console.error("Failed to save changes", error);
+            } finally {
+                setSavingQuestions(prev => ({ ...prev, [questionId]: false }));
             }
-
-            // Also update legacy resolutionComment for backward compatibility
-            const resolutionComment = newCommentText ? newCommentText.trim() : result.resolutionComment;
-
-            onGradeOverride(
-                submission.id,
-                questionId,
-                result.marksAwarded,
-                resolutionComment,
-                result.stepAnalysis,
-                result.keywordAnalysis,
-                updatedComments
-            );
-            
-            // Clear dirty state for this question
-            setEditingResults(prev => {
-                const newState = { ...prev };
-                delete newState[questionId];
-                return newState;
-            });
-            // Clear comment input
-            setCommentInputs(prev => {
-                const newState = { ...prev };
-                delete newState[questionId];
-                return newState;
-            });
         }
     };
 
@@ -365,7 +376,27 @@ export const GradingInterface: React.FC<GradingInterfaceProps> = ({
                     {/* Sticky Grading Header */}
                     <div className="bg-white p-4 border-b border-gray-200 flex justify-between items-center shadow-sm z-10 flex-shrink-0">
                         <div>
-                            <h3 className="font-bold text-gray-800 text-lg">Grading</h3>
+                            <div className="flex items-center gap-2">
+                                <h3 className="font-bold text-gray-800 text-lg">Grading</h3>
+                                {paper.gradingInstructions && (
+                                    <div className="relative">
+                                        <button 
+                                            onMouseEnter={() => setShowStrategyTooltip(true)}
+                                            onMouseLeave={() => setShowStrategyTooltip(false)}
+                                            className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 hover:bg-purple-200 cursor-help"
+                                        >
+                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                            Strategy Active
+                                        </button>
+                                        {showStrategyTooltip && (
+                                            <div className="absolute top-full left-0 mt-2 w-64 bg-gray-900 text-white text-xs p-3 rounded shadow-lg z-50 animate-slide-up">
+                                                <p className="font-bold mb-1 border-b border-gray-700 pb-1">Grading Instructions</p>
+                                                <p className="leading-relaxed opacity-90">{paper.gradingInstructions}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                             <p className="text-xs text-gray-500">Reviewing {paper.rubric.length} questions</p>
                         </div>
                         <div className="text-right">
@@ -400,6 +431,7 @@ export const GradingInterface: React.FC<GradingInterfaceProps> = ({
                                     const isDirty = editingResults[question.id] !== undefined || (commentInputs[question.id] && commentInputs[question.id] !== '');
                                     const isExpanded = expandedAnswers[question.id];
                                     const isRegrading = regradingQuestions[question.id];
+                                    const isSaving = savingQuestions[question.id];
                                     
                                     return (
                                         <div key={question.id} className={`bg-white border rounded-xl overflow-hidden shadow-sm transition-all duration-200 ${result?.disputed ? 'border-yellow-300 ring-4 ring-yellow-50' : 'border-gray-200'} ${isDirty ? 'ring-2 ring-blue-100 border-blue-400' : ''}`}>
@@ -422,7 +454,7 @@ export const GradingInterface: React.FC<GradingInterfaceProps> = ({
 
                                                         <button 
                                                             onClick={() => handleRegradeClick(question.id)}
-                                                            disabled={isRegrading}
+                                                            disabled={isRegrading || isSaving}
                                                             className="text-xs font-semibold text-gray-500 hover:text-blue-600 flex items-center gap-1 bg-white border border-gray-200 px-2 py-1 rounded transition-colors hover:border-blue-300 ml-2"
                                                             title="Regrade this question with AI"
                                                         >
@@ -642,15 +674,26 @@ export const GradingInterface: React.FC<GradingInterfaceProps> = ({
                                                             <button 
                                                                 onClick={() => handleCancelChanges(question.id)}
                                                                 className="px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-200 rounded transition-colors"
+                                                                disabled={isSaving}
                                                             >
                                                                 Cancel
                                                             </button>
                                                             <button 
                                                                 onClick={() => handleSaveChanges(question.id)}
-                                                                className="px-4 py-1.5 text-xs font-bold text-white bg-green-600 rounded shadow-md hover:bg-green-700 transition-colors flex items-center gap-1"
+                                                                disabled={isSaving}
+                                                                className="px-4 py-1.5 text-xs font-bold text-white bg-green-600 rounded shadow-md hover:bg-green-700 transition-colors flex items-center gap-1 disabled:opacity-70 disabled:cursor-wait"
                                                             >
-                                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                                                                Save
+                                                                {isSaving ? (
+                                                                    <>
+                                                                        <Spinner size="sm" />
+                                                                        Saving...
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                                                        Save
+                                                                    </>
+                                                                )}
                                                             </button>
                                                         </div>
                                                     </div>

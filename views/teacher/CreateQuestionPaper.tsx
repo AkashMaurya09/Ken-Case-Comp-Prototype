@@ -35,13 +35,17 @@ export const CreateQuestionPaper: React.FC<CreateQuestionPaperProps> = ({ onPape
     const [paperTitle, setPaperTitle] = useState('');
     const [paperSubject, setPaperSubject] = useState('');
     const [paperDescription, setPaperDescription] = useState('');
+    const [gradingInstructions, setGradingInstructions] = useState('');
 
     const [rubric, setRubric] = useState<RubricItem[]>([]);
     const [modelAnswerFile, setModelAnswerFile] = useState<{ file?: File; previewUrl: string } | null>(null);
 
     const [isExtracting, setIsExtracting] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
-    const [qpuploadKey, setQpuploadKey] = useState(Date.now());
+    
+    // Temporary state for Step 1 uploads
+    const [uploadedQP, setUploadedQP] = useState<{ file: File, preview: string } | null>(null);
+    const [uploadedRubric, setUploadedRubric] = useState<{ file: File, preview: string } | null>(null);
     
     const [extractedQuestionsForReview, setExtractedQuestionsForReview] = useState<ExtractedQuestion[] | null>(null);
 
@@ -52,6 +56,7 @@ export const CreateQuestionPaper: React.FC<CreateQuestionPaperProps> = ({ onPape
             setPaperTitle(initialPaper.title);
             setPaperSubject(initialPaper.subject || '');
             setPaperDescription(initialPaper.description || '');
+            setGradingInstructions(initialPaper.gradingInstructions || '');
             setRubric(initialPaper.rubric);
             if (initialPaper.modelAnswerPreviewUrl) {
                 setModelAnswerFile({ 
@@ -65,8 +70,11 @@ export const CreateQuestionPaper: React.FC<CreateQuestionPaperProps> = ({ onPape
             setPaperTitle('');
             setPaperSubject('');
             setPaperDescription('');
+            setGradingInstructions('');
             setRubric([]);
             setModelAnswerFile(null);
+            setUploadedQP(null);
+            setUploadedRubric(null);
             setCurrentStep('upload_paper');
         }
     }, [initialPaper]);
@@ -76,14 +84,26 @@ export const CreateQuestionPaper: React.FC<CreateQuestionPaperProps> = ({ onPape
         setModelAnswerFile({ file, previewUrl });
     }, []);
 
-    const handleQuestionPaperUpload = async (file: File) => {
-        console.log(`[CreateQuestionPaper] Question paper upload started: ${file.name}`);
+    const handleQPUpload = useCallback((file: File, previewUrl: string) => {
+        setUploadedQP({ file, preview: previewUrl });
+    }, []);
+
+    const handleRubricUpload = useCallback((file: File, previewUrl: string) => {
+        setUploadedRubric({ file, preview: previewUrl });
+    }, []);
+
+    const handleStartExtraction = async () => {
+        if (!uploadedQP) {
+            toast.error("Please upload a question paper to proceed.");
+            return;
+        }
+
+        console.log(`[CreateQuestionPaper] Extraction started. QP: ${uploadedQP.file.name}, Rubric: ${uploadedRubric?.file.name || 'None'}`);
         setIsExtracting(true);
         try {
-            const extractedQuestions = await extractQuestionsFromPaper(file);
+            const extractedQuestions = await extractQuestionsFromPaper(uploadedQP.file, uploadedRubric?.file);
             console.log(`[CreateQuestionPaper] Questions extracted: ${extractedQuestions.length}`);
             setExtractedQuestionsForReview(extractedQuestions);
-            setQpuploadKey(Date.now()); // Reset file input
         } catch (error) {
             console.error(`[CreateQuestionPaper] Extraction failed:`, error);
             toast.error(error instanceof Error ? error.message : "An unknown error occurred during extraction.");
@@ -104,6 +124,16 @@ export const CreateQuestionPaper: React.FC<CreateQuestionPaperProps> = ({ onPape
         }));
         setRubric(prev => [...prev, ...newRubricItems]);
         setExtractedQuestionsForReview(null); // Close modal
+        
+        // If we have an uploaded rubric, we might want to attach it as the model answer file if not already set
+        if (uploadedRubric && !modelAnswerFile) {
+            setModelAnswerFile(uploadedRubric);
+        } else if (uploadedQP && !modelAnswerFile) {
+             // Or maybe the question paper itself is a good fallback reference? 
+             // Typically model answer is separate, but better to have something than nothing.
+             // Decided: Keep model answer separate in step 2.
+        }
+
         setCurrentStep('define_rubric'); // Move to next step
     };
 
@@ -116,8 +146,6 @@ export const CreateQuestionPaper: React.FC<CreateQuestionPaperProps> = ({ onPape
             toast.error("Please enter a title for the question paper.");
             return;
         }
-        
-        // Model answer is now optional
         
         if (rubric.length === 0) {
             console.warn("[CreateQuestionPaper] Validation failed: Rubric empty");
@@ -133,6 +161,7 @@ export const CreateQuestionPaper: React.FC<CreateQuestionPaperProps> = ({ onPape
             title: paperTitle,
             subject: paperSubject,
             description: paperDescription,
+            gradingInstructions: gradingInstructions,
             modelAnswerFile: modelAnswerFile?.file, 
             modelAnswerPreviewUrl: modelAnswerFile?.previewUrl || '',
             rubric: rubric,
@@ -151,7 +180,7 @@ export const CreateQuestionPaper: React.FC<CreateQuestionPaperProps> = ({ onPape
             onPaperCreated();
         } catch (error) {
             console.error("[CreateQuestionPaper] Failed to save paper:", error);
-            // Toast is handled in context, but we keep the user on the page to retry
+            // Toast is handled in context
         } finally {
             setIsSaving(false);
             console.log("[CreateQuestionPaper] handleSavePaper finished.");
@@ -181,21 +210,50 @@ export const CreateQuestionPaper: React.FC<CreateQuestionPaperProps> = ({ onPape
             {currentStep === 'upload_paper' && (
                 <div className="bg-white p-6 rounded-lg shadow-sm">
                     <h3 className="text-xl font-semibold mb-2 text-gray-700">Step 1: Extract Questions</h3>
-                    <p className="text-gray-600 mb-6">Start by uploading the question paper (or answer key). The AI will automatically extract questions, marks, expected answers (including tables), and even suggest a marking scheme.</p>
-                     <FileUpload 
-                        key={qpuploadKey} 
-                        onFileUpload={handleQuestionPaperUpload} 
-                        label="Upload question paper (Image or PDF)" 
-                        acceptedTypes="image/*,application/pdf"
-                     />
-                        {isExtracting && (
-                            <div className="mt-4 text-center">
-                                <Spinner text="AI is extracting content and generating marking schemes, please wait..." />
+                    <p className="text-gray-600 mb-6">Upload the question paper to extract questions. Optionally, upload a grading rubric to automatically extract the marking scheme.</p>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <FileUpload 
+                                onFileUpload={handleQPUpload} 
+                                label="Question Paper (Mandatory)" 
+                                acceptedTypes="image/*,application/pdf"
+                                required={true}
+                                initialPreviewUrl={uploadedQP?.preview}
+                            />
+                        </div>
+                        <div>
+                            <FileUpload 
+                                onFileUpload={handleRubricUpload} 
+                                label="Grading Rubric (Optional)" 
+                                acceptedTypes="image/*,application/pdf"
+                                initialPreviewUrl={uploadedRubric?.preview}
+                            />
+                            <p className="text-xs text-gray-500 mt-2">
+                                If uploaded, step-wise marks and keywords will be extracted from this file instead of being generated.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="mt-8 flex flex-col items-center justify-center gap-4">
+                        {isExtracting ? (
+                            <div className="text-center">
+                                <Spinner text="AI is analyzing files and generating rubric..." />
                             </div>
+                        ) : (
+                            <RainbowButton 
+                                onClick={handleStartExtraction}
+                                disabled={!uploadedQP}
+                                className="px-8"
+                            >
+                                Extract Questions & Rubric
+                            </RainbowButton>
                         )}
-                        <div className="mt-6 border-t pt-4 text-center">
+                        
+                        <div className="border-t border-gray-100 pt-4 w-full text-center">
                             <button onClick={() => setCurrentStep('define_rubric')} className="text-blue-600 hover:underline text-sm">Skip extraction and create manually</button>
                         </div>
+                    </div>
                 </div>
             )}
 
@@ -243,8 +301,24 @@ export const CreateQuestionPaper: React.FC<CreateQuestionPaperProps> = ({ onPape
                                     value={paperDescription}
                                     onChange={(e) => setPaperDescription(e.target.value)}
                                     placeholder="Enter any instructions for students or details about the exam..."
-                                    className="p-2 border rounded-md w-full bg-white focus:ring-2 focus:ring-blue-500 outline-none h-24 resize-none"
+                                    className="p-2 border rounded-md w-full bg-white focus:ring-2 focus:ring-blue-500 outline-none h-20 resize-none"
                             />
+                        </div>
+
+                        <div>
+                            <label htmlFor="gradingInstructions" className="block text-sm font-medium text-gray-700 mb-1">
+                                    General Grading & Marking Strategy (Optional)
+                            </label>
+                            <textarea
+                                    id="gradingInstructions"
+                                    value={gradingInstructions}
+                                    onChange={(e) => setGradingInstructions(e.target.value)}
+                                    placeholder="e.g., Be lenient on spelling errors but strict on scientific terms. Award partial marks if the formula is correct even if the final calculation is wrong. For coding questions, prioritize logic over syntax..."
+                                    className="p-3 border border-gray-300 rounded-md w-full bg-white focus:ring-2 focus:ring-blue-500 outline-none h-40 resize-y"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">
+                                Provide high-level guidelines for the AI on how to apply step-wise and keyword-based marking across all questions to improve accuracy.
+                            </p>
                         </div>
 
                         <div className="border-t border-gray-100 pt-4">

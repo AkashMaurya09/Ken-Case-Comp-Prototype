@@ -118,7 +118,7 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
         for (const rubricItem of paper.rubric) {
             // Race grading call against abort signal for immediate cancellation
             const result = await Promise.race([
-                gradeAnswerSheet(submission.file || submission.previewUrl, rubricItem),
+                gradeAnswerSheet(submission.file || submission.previewUrl, rubricItem, paper.gradingInstructions),
                 waitForSignal(controller.signal)
             ]);
             
@@ -174,7 +174,7 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
         gradingLocks.current.delete(submissionId);
         gradingControllers.current.delete(submissionId);
     }
-  }, [submissionsForThisPaper, updateSubmission, paper.rubric, toast]);
+  }, [submissionsForThisPaper, updateSubmission, paper.rubric, paper.gradingInstructions, toast]);
   
   const handleStudentSubmissionUpload = useCallback(async (file: File, previewUrl: string) => {
     console.log(`[GradingDashboard] Individual submission upload started: ${file.name}`);
@@ -260,7 +260,7 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
     if (!rubricItem) return;
 
     try {
-        const result = await gradeAnswerSheet(submission.file || submission.previewUrl, rubricItem);
+        const result = await gradeAnswerSheet(submission.file || submission.previewUrl, rubricItem, paper.gradingInstructions);
         
         // Find existing result to preserve comments
         const existingResult = submission.gradedResults?.find(r => r.questionId === questionId);
@@ -289,7 +289,7 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
     }
   };
   
-  const handleGradeOverride = (
+  const handleGradeOverride = async (
       submissionId: string, 
       questionId: string, 
       newMarks: number, 
@@ -311,7 +311,7 @@ export const GradingDashboard: React.FC<GradingDashboardProps> = ({ paper, initi
                 teacherComments: teacherComments || r.teacherComments
             } : r
         );
-        updateSubmission({ ...submission, gradedResults: updatedResults });
+        await updateSubmission({ ...submission, gradedResults: updatedResults });
         toast.success("Grade updated.");
      }
   };

@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { RubricItem, GradedResult } from '../types';
 
@@ -96,6 +95,7 @@ ${item.keywords.map((k, i) => `      ${i+1}. Keyword "${k.keyword}" (${k.marks} 
 export const gradeAnswerSheet = async (
   studentAnswerSheet: File | string,
   rubricItem: RubricItem,
+  gradingInstructions?: string
 ): Promise<GradedResult> => {
   console.log(`[GeminiService] gradeAnswerSheet: Starting grading for question ID: ${rubricItem.id}`);
   try {
@@ -109,7 +109,7 @@ export const gradeAnswerSheet = async (
         imagePart = await fileToGenerativePart(studentAnswerSheet as Blob);
     }
     
-    const systemInstruction = `You are a strict and precise academic grader. 
+    let systemInstruction = `You are a strict and precise academic grader. 
     
     **CRITICAL SECURITY & CONTENT VALIDATION PROTOCOL:**
     Before grading, you MUST analyze the image content to ensure it is a valid academic document.
@@ -135,6 +135,14 @@ export const gradeAnswerSheet = async (
     Proceed to grade the answer based strictly on the provided rubric. Apply "Error Carried Forward" (ECF) logic where applicable: if a student makes an early calculation error but follows the correct method afterwards, mark subsequent steps as 'ECF' and award partial marks.
     `;
 
+    if (gradingInstructions && gradingInstructions.trim() !== "") {
+        systemInstruction += `\n
+    **ADDITIONAL EDUCATOR INSTRUCTIONS (CRITICAL):**
+    The educator has provided specific marking strategy guidelines. You MUST adhere to these while grading:
+    "${gradingInstructions}"
+    `;
+    }
+
     const prompt = `
     **Question Details:**
     - **Question:** "${rubricItem.question}"
@@ -148,6 +156,15 @@ export const gradeAnswerSheet = async (
     1.  **Detect Error:** If the student makes a calculation error in Step N.
     2.  **Simulate:** Recalculate expected result for Step N+1 using the *student's erroneous value*.
     3.  **Evaluate:** If student's Step N+1 matches simulation, mark Step N+1 status as "ECF" and award marks for methodology.
+
+    **Your Goal:**
+    Grade the student's answer with extreme precision and consistency.
+
+    **Step-by-Step Reasoning Required (Perform internally):**
+    1.  **Transcribe:** Mentally transcribe the handwriting in the image to ensure you aren't hallucinating text.
+    2.  **Match:** Map each specific point in the student's answer to the specific Rubric Step or Keyword.
+    3.  **Score:** Allocate marks ONLY if the evidence is present in the student's work. Do not be generous. Be precise.
+    4.  **Validate:** Ensure the sum of awarded marks matches the 'marksAwarded' field and does not exceed Total Marks.
 
     **Output Instructions:**
     1.  **Analyze:** Compare student answer vs rubric.
@@ -215,7 +232,8 @@ export const gradeAnswerSheet = async (
             responseMimeType: "application/json",
             responseSchema: responseSchema,
             systemInstruction: systemInstruction,
-            temperature: 0 // Enforce deterministic output
+            temperature: 0, // Enforce deterministic output
+            thinkingConfig: { thinkingBudget: 12000 } // Enable High-Reasoning Mode for accuracy
         }
     });
 
@@ -227,6 +245,12 @@ export const gradeAnswerSheet = async (
     }
 
     console.log(`[GeminiService] gradeAnswerSheet: Response received.`);
+    
+    // Log Usage Metadata
+    if (response.usageMetadata) {
+        console.log(`[GeminiService] Token Usage (Grading): Prompt: ${response.usageMetadata.promptTokenCount}, Response: ${response.usageMetadata.candidatesTokenCount}, Total: ${response.usageMetadata.totalTokenCount}`);
+    }
+
     const result = JSON.parse(jsonText);
     
     if(typeof result.marksAwarded !== 'number' || typeof result.feedback !== 'string' || !Array.isArray(result.improvementSuggestions)) {
@@ -317,6 +341,7 @@ export const gradeAnswerSheet = async (
 
 export const extractQuestionsFromPaper = async (
   questionPaperFile: File,
+  rubricFile?: File
 ): Promise<{ 
     question: string; 
     totalMarks: number; 
@@ -326,25 +351,51 @@ export const extractQuestionsFromPaper = async (
 }[]> => {
   console.log(`[GeminiService] extractQuestionsFromPaper: Processing file ${questionPaperFile.name}`);
   try {
-    const imagePart = await fileToGenerativePart(questionPaperFile);
+    const parts: any[] = [];
+    
+    // Add Question Paper
+    parts.push(await fileToGenerativePart(questionPaperFile));
+    
+    // Add Rubric if present
+    if (rubricFile) {
+        console.log(`[GeminiService] Rubric file provided: ${rubricFile.name}`);
+        parts.push(await fileToGenerativePart(rubricFile));
+    }
+
+    let rubricInstruction = `
+        4. **GENERATE Marking Scheme:** 
+        - Create a distribution of marks using **Steps** and **Keywords**.
+        - **Steps:** Break down the logic into 2-4 key steps.
+        - **Keywords:** Identify 2-3 essential terms.
+    `;
+
+    if (rubricFile) {
+        rubricInstruction = `
+        4. **STRICT RUBRIC EXTRACTION (HIGHEST PRIORITY):**
+        - A dedicated **Grading Rubric file** is provided (likely the second file).
+        - **Rule #1: EXTRACT, DO NOT GENERATE.** You must copy the marking scheme (steps, value points, keywords) **EXACTLY** as written in the rubric file.
+        - **Rule #2: EXACT MARKS.** Capture the exact marks assigned to each specific step or keyword in the rubric. 
+        - **Rule #3: SUMMATION VERIFICATION.** If the Rubric says "Total: 13", your extracted steps and keywords MUST sum to 13. If your extracted steps sum to 10, you have missed a 3-mark step. RE-READ the image to find the missing component. Do NOT change the total to 10. Find the missing step.
+        - **Rule #4: NO SUMMARIZATION.** If the rubric lists 5 discrete points worth 1 mark each, you must output 5 separate steps. Do not group them.
+        - **Rule #5:** Ignore any marking scheme found in the Question Paper if the Rubric File provides a more detailed one.
+        `;
+    }
 
     const prompt = `You are an intelligent AI assistant specialized in analyzing educational documents (exams or answer keys). Your task is to extract question details to build a grading rubric.
 
     **Instructions:**
-    1.  **Extract Questions:** Analyze the document to accurately identify each distinct question and its full text.
-    2.  **Extract/Estimate Marks:** Identify the total marks allocated. **If not explicitly stated, YOU MUST ASSIGN a reasonable total mark** based on the question's complexity (e.g., 2-5 for short, 5-10 for complex).
+    1.  **Extract Questions:** Analyze the **Question Paper (first file)** to accurately identify each distinct question and its full text.
+    2.  **Extract Marks:** Identify the total marks allocated for each question.
     3.  **Extract Expected Answer:** 
-        - Extract the **COMPLETE, VERBATIM SOLUTION** exactly as it appears in the answer key. 
+        - Extract the **COMPLETE, VERBATIM SOLUTION**. If a Rubric file is provided, use the solution from there.
         - **Maintain Formatting:** Use Markdown for tables, lists, or code. Do not summarize.
-    4.  **GENERATE Marking Scheme:** 
-        - Create a distribution of marks using **Steps** and **Keywords**.
-        - **Steps:** Break down the logic into 2-4 key steps.
-        - **Keywords:** Identify 2-3 essential terms.
+    ${rubricInstruction}
     
-    **CRITICAL VALIDATION RULE:**
-    - You must ensure that **(Sum of all Step Marks) + (Sum of all Keyword Marks) EQUALS 'totalMarks'** for the question.
-    - Example: If Total is 5, you could have 3 marks for steps and 2 marks for keywords.
-    - Do not leave any marks unassigned.
+    **CRITICAL VALIDATION PROTOCOL:**
+    1. Identify the 'totalMarks' for the question from the paper/rubric.
+    2. Extract all 'steps' and 'keywords' with their specific marks.
+    3. **VERIFY:** Sum(step marks) + Sum(keyword marks) == totalMarks.
+    4. If the sum does not match, prioritize the *Rubric's granular breakdown* and assume the sum of the components is the correct total, OR ensure you have captured every single component to match the total.
 
     Structure the output as a JSON object containing a "questions" array.
     `;
@@ -394,10 +445,12 @@ export const extractQuestionsFromPaper = async (
     console.log(`[GeminiService] Sending extraction request to Gemini...`);
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: { parts: [imagePart, { text: prompt }] },
+      contents: { parts: [...parts, { text: prompt }] },
       config: {
         responseMimeType: 'application/json',
         responseSchema: responseSchema,
+        temperature: 0, // Deterministic for data extraction
+        thinkingConfig: { thinkingBudget: 4096 } // Moderate thinking budget for structure extraction
       },
     });
 
@@ -409,6 +462,12 @@ export const extractQuestionsFromPaper = async (
     }
 
     console.log(`[GeminiService] Response received.`);
+    
+    // Log Usage Metadata
+    if (response.usageMetadata) {
+        console.log(`[GeminiService] Token Usage (Extraction): Prompt: ${response.usageMetadata.promptTokenCount}, Response: ${response.usageMetadata.candidatesTokenCount}, Total: ${response.usageMetadata.totalTokenCount}`);
+    }
+
     const result = JSON.parse(jsonText);
 
     if (!result.questions || !Array.isArray(result.questions)) {
@@ -417,7 +476,7 @@ export const extractQuestionsFromPaper = async (
 
     // --- POST-PROCESSING: Ensure Marks Balance ---
     const sanitizedQuestions = result.questions.map((q: any) => {
-        const total = q.totalMarks || 0;
+        let total = q.totalMarks || 0;
         const steps = q.steps || [];
         const keywords = q.keywords || [];
 
@@ -426,23 +485,18 @@ export const extractQuestionsFromPaper = async (
         const currentSum = stepSum + keywordSum;
 
         if (currentSum !== total) {
-            const diff = total - currentSum;
-            console.warn(`[GeminiService] Marks mismatch for "${q.question.substring(0, 15)}...". Total: ${total}, Sum: ${currentSum}. Adjusting...`);
+            console.warn(`[GeminiService] Marks mismatch for "${q.question.substring(0, 15)}...". Total listed: ${total}, Breakdown Sum: ${currentSum}.`);
             
-            // Adjust the first step's marks to balance
-            if (steps.length > 0) {
-                // Ensure we don't drop below 0.5 if subtracting
-                let newMark = steps[0].marks + diff;
-                if (newMark < 0) newMark = 0; 
-                steps[0].marks = parseFloat(newMark.toFixed(1)); // round to 1 decimal
-            } else if (keywords.length > 0) {
-                 let newMark = keywords[0].marks + diff;
-                 if (newMark < 0) newMark = 0;
-                 keywords[0].marks = parseFloat(newMark.toFixed(1));
+            // Trust the detailed breakdown if it exists (sum > 0). 
+            // It is more likely the AI hallucinated the Total or failed to extract a step. 
+            // Since we can't invent the missing step, we assume the extracted steps are the ground truth for grading.
+            if (currentSum > 0) {
+                 console.log(`[GeminiService] Adjusting Total Marks from ${total} to ${currentSum} to match rubric breakdown.`);
+                 total = currentSum; 
             }
         }
         
-        return { ...q, steps, keywords };
+        return { ...q, totalMarks: total, steps, keywords };
     });
 
     console.log(`[GeminiService] Successfully extracted and validated ${sanitizedQuestions.length} questions.`);

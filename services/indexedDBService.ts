@@ -41,6 +41,7 @@ interface StoredPaper {
     createdAt: Date;
     modelAnswerBlob?: Blob; // Store binary
     fileType?: string;
+    gradingInstructions?: string;
 }
 
 interface StoredSubmission {
@@ -72,7 +73,8 @@ export const LocalDB = {
                 rubric: paper.rubric,
                 createdAt: paper.createdAt || new Date(),
                 modelAnswerBlob: fileBlob, // Save the blob!
-                fileType: paper.modelAnswerFile?.type
+                fileType: paper.modelAnswerFile?.type,
+                gradingInstructions: paper.gradingInstructions
             };
 
             const request = store.put(storedData);
@@ -117,7 +119,8 @@ export const LocalDB = {
                         rubric: p.rubric,
                         createdAt: p.createdAt,
                         modelAnswerPreviewUrl: previewUrl,
-                        modelAnswerFile: modelAnswerFile
+                        modelAnswerFile: modelAnswerFile,
+                        gradingInstructions: p.gradingInstructions
                     };
                 });
                 // Sort by desc date

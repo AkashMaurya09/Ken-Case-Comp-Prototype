@@ -32,6 +32,7 @@ export interface QuestionPaper {
   modelAnswerPreviewUrl?: string;
   rubric: RubricItem[];
   createdAt: Date;
+  gradingInstructions?: string; // High-level guidelines for the AI
 }
 
 export enum GradingStatus {

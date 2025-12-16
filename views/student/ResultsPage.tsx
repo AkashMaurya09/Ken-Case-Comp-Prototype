@@ -230,7 +230,7 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ submission, questionPa
                  
                  // Race the grading call against the abort signal
                  const result = await Promise.race([
-                     gradeAnswerSheet(source, rubricItem),
+                     gradeAnswerSheet(source, rubricItem, questionPaper.gradingInstructions),
                      waitForSignal(abortControllerRef.current!.signal)
                  ]);
                  
