@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { ProfileDropdown } from './ProfileDropdown';
 import { useAuth } from '../context/AuthContext';
@@ -38,7 +37,7 @@ export const Header: React.FC<HeaderProps> = ({ isLoggedIn, userProfile: propUse
     <header className="bg-white border-b border-slate-200 sticky top-0 z-40 h-20 flex items-center">
       <div className="container mx-auto px-4 md:px-8 flex items-center justify-between">
         <div className="flex items-center cursor-pointer" onClick={() => window.location.reload()}>
-            {/* New Professional IntelliGrade Logo */}
+            {/* New Professional CheckdAI Logo */}
             <svg width="40" height="40" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="logoGradient" x1="0" y1="0" x2="1" y2="1">
@@ -58,8 +57,8 @@ export const Header: React.FC<HeaderProps> = ({ isLoggedIn, userProfile: propUse
               <path d="M25 12L26.5 15L29 16L26.5 17L25 20L23.5 17L21 16L23.5 15L25 12Z" fill="#A7F3D0"/>
             </svg>
             <h1 className="text-2xl font-bold ml-3">
-              <span className="text-gray-800">Intelli</span>
-              <span className="text-blue-600">Grade</span>
+              <span className="text-gray-800">Checkd</span>
+              <span className="text-blue-600">AI</span>
             </h1>
         </div>
         {isLoggedIn && userProfile ? (

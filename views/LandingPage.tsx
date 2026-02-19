@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Role } from '../types';
 import { RainbowButton } from '../components/RainbowButton';
@@ -107,7 +106,7 @@ const testimonials = [
   },
   {
     avatar: 'https://i.pravatar.cc/150?img=8',
-    quote: "IntelliGrade helps me to be a more uniform grader and to adjust scoring on the fly. The AI insights are incredibly valuable for curriculum planning.",
+    quote: "CheckdAI helps me to be a more uniform grader and to adjust scoring on the fly. The AI insights are incredibly valuable for curriculum planning.",
     name: 'Dr. Anjali Patel',
     title: 'Physics',
     institution: 'IIM AHMEDABAD'
@@ -121,7 +120,7 @@ const testimonials = [
   },
   {
     avatar: 'https://i.pravatar.cc/150?img=12',
-    quote: "Grading massive open-ended assignments used to be a nightmare. IntelliGrade turned it into a manageable, even insightful, process.",
+    quote: "Grading massive open-ended assignments used to be a nightmare. CheckdAI turned it into a manageable, even insightful, process.",
     name: 'Dr. Sarah Jenkins',
     title: 'Data Science',
     institution: 'STANFORD UNIVERSITY'
@@ -189,9 +188,9 @@ const ReviewCard: React.FC<{
 };
 
 const faqs = [
-  { question: "Is IntelliGrade suitable for all subjects?", answer: "Yes! IntelliGrade is designed to be versatile. While it excels at STEM subjects with clear rubrics, its flexible criteria editor can be adapted for humanities, arts, and any subject requiring structured feedback." },
+  { question: "Is CheckdAI suitable for all subjects?", answer: "Yes! CheckdAI is designed to be versatile. While it excels at STEM subjects with clear rubrics, its flexible criteria editor can be adapted for humanities, arts, and any subject requiring structured feedback." },
   { question: "How accurate is the AI grading?", answer: "Our AI is highly accurate when provided with a clear and detailed rubric. The 'step-wise' and 'keyword' marking features allow you to train the AI to grade exactly like you would. Plus, you always have the final say and can manually override any grade." },
-  { question: "Can students cheat by copying answers?", answer: "IntelliGrade focuses on grading based on the provided rubric. While it doesn't have a built-in plagiarism detector, the detailed, per-step feedback often makes it obvious when students have not shown their work, which can discourage cheating." },
+  { question: "Can students cheat by copying answers?", answer: "CheckdAI focuses on grading based on the provided rubric. While it doesn't have a built-in plagiarism detector, the detailed, per-step feedback often makes it obvious when students have not shown their work, which can discourage cheating." },
   { question: "What learning management systems (LMS) does it integrate with?", answer: "We are actively working on direct integrations with popular LMS platforms like Canvas, Moodle, and Blackboard. Currently, you can easily export grades in a standard CSV format that can be uploaded to any gradebook." },
   { question: "Is my data and my students' data secure?", answer: "Absolutely. We use industry-standard encryption and security protocols to protect all data. We are compliant with data privacy regulations to ensure your and your students' information is always safe." },
 ];
@@ -251,7 +250,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
       step: 3,
       name: 'Assess',
       title: 'Review, refine, and publish',
-      description: 'IntelliGrade grades automatically, but you stay in control. Quickly review AI-generated grades, make adjustments if needed, and publish results instantly.',
+      description: 'CheckdAI grades automatically, but you stay in control. Quickly review AI-generated grades, make adjustments if needed, and publish results instantly.',
       color: 'bg-purple-500',
     },
     {
@@ -320,7 +319,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
         <div className="relative z-10 max-w-5xl mx-auto flex flex-col items-center">
           
           <div className="mb-8 bg-black w-16 h-16 rounded-2xl flex items-center justify-center shadow-2xl ring-1 ring-white/20">
-            <span className="text-white text-3xl font-serif italic">I</span>
+            <span className="text-white text-3xl font-serif italic">C</span>
           </div>
   
           <h1 className="text-5xl md:text-7xl font-extrabold text-gray-900 tracking-tight mb-6 leading-[1.1]">
@@ -329,12 +328,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
           </h1>
           
           <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-10 leading-relaxed">
-            Set your marking criteria, and let IntelliGrade do the rest — stepwise marking, keyword detection, and instant summaries, all in one click.
+            Set your marking criteria, and let CheckdAI do the rest — stepwise marking, keyword detection, and instant summaries, all in one click.
           </p>
   
           <div className="flex flex-col sm:flex-row gap-4 items-center justify-center w-full">
             <RainbowButton onClick={() => onLoginClick(Role.TEACHER)} className="h-12 px-8 text-base rounded-full shadow-lg">
-              Try IntelliGrade Free <span className="ml-2">→</span>
+              Try CheckdAI Free <span className="ml-2">→</span>
             </RainbowButton>
           </div>
 
@@ -407,7 +406,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
               Grades Should Talk, Not Just Count
             </h2>
             <p className="mt-4 text-lg text-gray-700">
-              One exam. Many insights. Endless improvement. See how IntelliGrade transforms grading into a powerful teaching tool.
+              One exam. Many insights. Endless improvement. See how CheckdAI transforms grading into a powerful teaching tool.
             </p>
           </div>
 
@@ -444,12 +443,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
         </div>
       </section>
 
-      {/* Why Use IntelliGrade Section */}
+      {/* Why Use CheckdAI Section */}
       <section className="bg-[#FBF9F6] py-16 md:py-24">
         <div className="container mx-auto px-4 md:px-8 max-w-7xl">
           <div className="text-center max-w-3xl mx-auto">
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900">
-              Why Use IntelliGrade?
+              Why Use CheckdAI?
             </h2>
             <p className="mt-4 text-lg text-gray-700">
               Transform hours of manual grading into minutes of focused teaching. See the difference AI-powered grading makes for educators and students alike.
@@ -461,7 +460,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
             <div className="bg-white border border-red-200 rounded-2xl shadow-lg p-6 md:p-8">
               <div className="flex items-center gap-3 mb-4">
                 <svg className="h-7 w-7 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                <h3 className="text-2xl font-bold text-gray-800">Before IntelliGrade</h3>
+                <h3 className="text-2xl font-bold text-gray-800">Before CheckdAI</h3>
               </div>
               <div className="border-t border-red-200 pt-4">
                 <ul className="space-y-3">
@@ -479,7 +478,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
             <div className="bg-gradient-to-br from-purple-50 via-yellow-50 to-white border border-purple-200 rounded-2xl shadow-lg p-6 md:p-8">
                <div className="flex items-center gap-3 mb-4">
                  <svg className="h-7 w-7 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                 <h3 className="text-2xl font-bold text-gray-800">After IntelliGrade</h3>
+                 <h3 className="text-2xl font-bold text-gray-800">After CheckdAI</h3>
                </div>
                <div className="border-t border-purple-200 pt-4">
                   <ul className="space-y-3">
@@ -504,7 +503,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
               Grade All Subjects
             </h2>
             <p className="mt-4 text-lg text-gray-700">
-              IntelliGrade supports variable-length assignments (problem sets & projects) as well as fixed-template assignments (worksheets, quizzes, bubble sheets, and exams).
+              CheckdAI supports variable-length assignments (problem sets & projects) as well as fixed-template assignments (worksheets, quizzes, bubble sheets, and exams).
             </p>
           </div>
 
@@ -624,7 +623,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
               Trusted by Educators Worldwide
             </h2>
             <p className="mt-4 text-lg text-gray-700">
-              See what professors and teachers from top institutions are saying about IntelliGrade
+              See what professors and teachers from top institutions are saying about CheckdAI
             </p>
           </div>
         </div>
@@ -683,8 +682,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
                   <path d="M25 12L26.5 15L29 16L26.5 17L25 20L23.5 17L21 16L23.5 15L25 12Z" fill="#A7F3D0" />
                 </svg>
                 <h1 className="text-2xl font-bold ml-3">
-                  <span className="text-gray-200">Intelli</span>
-                  <span className="text-blue-400">Grade</span>
+                  <span className="text-gray-200">Checkd</span>
+                  <span className="text-blue-400">AI</span>
                 </h1>
               </div>
               <p className="text-gray-400 text-base">Transforming education with AI-powered grading and analytics.</p>
@@ -727,7 +726,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
             </div>
           </div>
           <div className="mt-12 border-t border-gray-700 pt-8">
-            <p className="text-base text-gray-400 xl:text-center">&copy; {new Date().getFullYear()} IntelliGrade, Inc. All rights reserved.</p>
+            <p className="text-base text-gray-400 xl:text-center">&copy; {new Date().getFullYear()} CheckdAI, Inc. All rights reserved.</p>
           </div>
         </footer>
     </div>

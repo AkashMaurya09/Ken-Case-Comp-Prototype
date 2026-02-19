@@ -1,7 +1,6 @@
-
 import { QuestionPaper, StudentSubmission, RubricItem, GradedResult, GradingStatus } from '../types';
 
-const DB_NAME = 'IntelliGradeDB';
+const DB_NAME = 'CheckdAIDB';
 const DB_VERSION = 1;
 const STORE_PAPERS = 'questionPapers';
 const STORE_SUBMISSIONS = 'submissions';

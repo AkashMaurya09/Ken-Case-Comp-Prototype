@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { TeacherView } from './views/TeacherView';
 import { StudentView } from './views/StudentView';
@@ -26,7 +25,7 @@ const MainContent: React.FC = () => {
     // Create a composite user profile that prefers the Auth user but falls back to a Demo user if bypass is active
     const activeUserProfile: UserProfile | null = authUserProfile || (demoRole ? {
         uid: 'demo-user',
-        email: 'demo@intelligrade.com',
+        email: 'demo@checkdai.com',
         displayName: demoRole === Role.TEACHER ? 'Prof. Alex Smith' : 'Jane Doe',
         role: demoRole,
         createdAt: new Date()

@@ -1,5 +1,5 @@
 {
-  "name": "KEN Demo IntelliGrade: AI-Powered Grading",
+  "name": "KEN Demo CheckdAI: AI-Powered Grading",
   "description": "An intelligent application that uses AI to grade subjective answer sheets based on a teacher-defined rubric. It provides instant feedback to students, pinpoints areas for improvement, and includes a dispute resolution system for teachers.",
   "requestFramePermissions": []
 }
